@@ -1,0 +1,142 @@
+EchoLocate — Installation Guide
+=================================
+
+-----------------------------------------------------------------------
+OPTION 1 — Use the live demo (nothing to install)
+-----------------------------------------------------------------------
+
+Visit:  https://mgifford.github.io/EchoLocate/
+
+Works in Chrome or Edge on desktop.  All audio stays in your browser;
+nothing is sent to any server.
+
+
+-----------------------------------------------------------------------
+OPTION 2 — Run locally (for offline use or extra privacy)
+-----------------------------------------------------------------------
+
+Requirements
+  • Git
+  • Python 3.7 or later  (pre-installed on macOS and most Linux distros)
+  • Chrome or Microsoft Edge  (needed for the Web Speech API)
+
+Steps
+
+  1. Clone the repository
+
+        git clone https://github.com/mgifford/EchoLocate.git
+        cd EchoLocate
+
+     The vendor/ directory is committed to the repository, so all
+     JavaScript dependencies (HTMX, Meyda, franc-min) are already
+     present — no npm install or build step needed.
+
+  2. Start the local server
+
+        python3 server.py
+
+     You should see:
+
+        EchoLocate is running at:
+          http://localhost:8080/
+
+  3. Open Chrome or Edge and navigate to
+
+        http://localhost:8080/
+
+  4. Allow microphone access when prompted by the browser.
+
+  5. Click Start to begin live captioning.
+
+The app works fully offline once loaded; no internet connection is
+needed for any captioning or analysis.  Close the terminal window
+(or press Ctrl+C) to stop the server.
+
+Custom port:
+
+    python3 server.py 9000       # changes port to 9000
+
+
+-----------------------------------------------------------------------
+OPTION 3 — On-device language-detection model (optional, ~25 MB)
+-----------------------------------------------------------------------
+
+The base app uses n-gram heuristics (franc-min) for language detection.
+For higher accuracy, you can download a neural language-id model that
+runs entirely in the browser via WebAssembly.
+
+  1. Ensure you are connected to the internet for the download step.
+
+  2. From the EchoLocate directory, run:
+
+        chmod +x download-models.sh
+        ./download-models.sh
+
+     This downloads:
+       • Transformers.js runtime        vendor/transformers/    ~800 KB
+       • ONNX Runtime WASM files        vendor/onnx-runtime/   ~10 MB
+       • language-id model              models/language-id/     ~3 MB
+
+     Total: approximately 14 MB.
+
+  3. Restart or reload the server:
+
+        python3 server.py
+
+  4. EchoLocate will detect the model files at startup and use them
+     automatically.  No configuration is required.
+
+The model identifies 97 languages directly from recognised text in
+roughly 40 ms per card.  After this one-time download the app runs
+with no internet connection required.
+
+
+-----------------------------------------------------------------------
+UPDATING DEPENDENCIES
+-----------------------------------------------------------------------
+
+If you want to refresh all vendored JavaScript to the latest pinned
+versions:
+
+    chmod +x download-deps.sh
+    ./download-deps.sh
+
+This re-downloads HTMX, Meyda, and franc-min from their CDN sources
+into vendor/.  The pinned version numbers are at the top of that
+script; edit them to upgrade.
+
+
+-----------------------------------------------------------------------
+TROUBLESHOOTING
+-----------------------------------------------------------------------
+
+"Microphone access denied"
+  Grant microphone permission in the browser's address-bar lock icon.
+  On macOS, System Settings → Privacy & Security → Microphone.
+
+"Speech recognition not available"
+  Use Chrome or Microsoft Edge.  Firefox and Safari do not currently
+  implement the Web Speech API.
+
+"Service worker errors in DevTools"
+  Clear the site data in DevTools → Application → Storage → Clear, then
+  hard-reload (Cmd+Shift+R / Ctrl+Shift+R).
+
+"Port 8080 already in use"
+  Pass a different port: python3 server.py 9090
+
+
+-----------------------------------------------------------------------
+PRIVACY
+-----------------------------------------------------------------------
+
+EchoLocate processes all audio on your device.  No transcript text,
+audio, speaker data, or session content is ever transmitted to any
+server.  See index.html for the full privacy notice displayed in the app.
+
+
+-----------------------------------------------------------------------
+LICENSE
+-----------------------------------------------------------------------
+
+MIT — see LICENSE for details.

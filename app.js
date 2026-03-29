@@ -34,11 +34,62 @@ const API = Object.freeze({
   ADD_CARD: apiUrl('add-card'),
 });
 
+const DEFAULT_RECOGNITION_LANG = 'en-US';
+
+const LANGUAGE_OPTIONS = [
+  { code: 'en-US', label: 'English (US)', flag: '🇺🇸' },
+  { code: 'en-GB', label: 'English (UK)', flag: '🇬🇧' },
+  { code: 'es-ES', label: 'Spanish (Spain)', flag: '🇪🇸' },
+  { code: 'es-MX', label: 'Spanish (Mexico)', flag: '🇲🇽' },
+  { code: 'fr-FR', label: 'French', flag: '🇫🇷' },
+  { code: 'de-DE', label: 'German', flag: '🇩🇪' },
+  { code: 'it-IT', label: 'Italian', flag: '🇮🇹' },
+  { code: 'pt-BR', label: 'Portuguese (Brazil)', flag: '🇧🇷' },
+  { code: 'pt-PT', label: 'Portuguese (Portugal)', flag: '🇵🇹' },
+  { code: 'nl-NL', label: 'Dutch', flag: '🇳🇱' },
+  { code: 'sv-SE', label: 'Swedish', flag: '🇸🇪' },
+  { code: 'no-NO', label: 'Norwegian', flag: '🇳🇴' },
+  { code: 'da-DK', label: 'Danish', flag: '🇩🇰' },
+  { code: 'fi-FI', label: 'Finnish', flag: '🇫🇮' },
+  { code: 'pl-PL', label: 'Polish', flag: '🇵🇱' },
+  { code: 'cs-CZ', label: 'Czech', flag: '🇨🇿' },
+  { code: 'hu-HU', label: 'Hungarian', flag: '🇭🇺' },
+  { code: 'ro-RO', label: 'Romanian', flag: '🇷🇴' },
+  { code: 'ru-RU', label: 'Russian', flag: '🇷🇺' },
+  { code: 'uk-UA', label: 'Ukrainian', flag: '🇺🇦' },
+  { code: 'tr-TR', label: 'Turkish', flag: '🇹🇷' },
+  { code: 'el-GR', label: 'Greek', flag: '🇬🇷' },
+  { code: 'ar-SA', label: 'Arabic', flag: '🇸🇦' },
+  { code: 'he-IL', label: 'Hebrew', flag: '🇮🇱' },
+  { code: 'hi-IN', label: 'Hindi', flag: '🇮🇳' },
+  { code: 'bn-BD', label: 'Bengali', flag: '🇧🇩' },
+  { code: 'ta-IN', label: 'Tamil', flag: '🇮🇳' },
+  { code: 'te-IN', label: 'Telugu', flag: '🇮🇳' },
+  { code: 'th-TH', label: 'Thai', flag: '🇹🇭' },
+  { code: 'vi-VN', label: 'Vietnamese', flag: '🇻🇳' },
+  { code: 'id-ID', label: 'Indonesian', flag: '🇮🇩' },
+  { code: 'ms-MY', label: 'Malay', flag: '🇲🇾' },
+  { code: 'ja-JP', label: 'Japanese', flag: '🇯🇵' },
+  { code: 'ko-KR', label: 'Korean', flag: '🇰🇷' },
+  { code: 'cmn-Hans-CN', label: 'Chinese (Simplified)', flag: '🇨🇳' },
+  { code: 'cmn-Hant-TW', label: 'Chinese (Traditional)', flag: '🇹🇼' },
+];
+
+const ISO3_TO_BCP47 = {
+  eng: 'en-US', spa: 'es-ES', fra: 'fr-FR', deu: 'de-DE', ita: 'it-IT', por: 'pt-BR',
+  nld: 'nl-NL', rus: 'ru-RU', ukr: 'uk-UA', tur: 'tr-TR', ell: 'el-GR', ara: 'ar-SA',
+  heb: 'he-IL', hin: 'hi-IN', ben: 'bn-BD', tam: 'ta-IN', tel: 'te-IN', tha: 'th-TH',
+  vie: 'vi-VN', ind: 'id-ID', msa: 'ms-MY', jpn: 'ja-JP', kor: 'ko-KR', cmn: 'cmn-Hans-CN',
+};
+
 const State = {
   isRunning:                 false,
   pitchHistory:              [],
   utteranceSamples:          [],
   currentUtteranceStartedAt: null,
+  recognitionLang:           localStorage.getItem('echolocate-rec-lang') || DEFAULT_RECOGNITION_LANG,
+  languageDetector:          null,
+  supportedLanguages:        [],
   audioCtx:                  null,
   analyser:                  null,
   meydaAnalyzer:             null,
@@ -73,14 +124,15 @@ function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SR) return true;
 
-  document.body.innerHTML = `
-    <div class="no-support-msg" role="alert">
-      <h2>Browser Not Supported</h2>
-      <p>
-        EchoLocate requires the Web Speech API, available in
-        <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>.
-      </p>
-    </div>`;
+  const warning = document.getElementById('speech-warning');
+  if (warning) warning.classList.remove('hidden');
+
+  const start = document.getElementById('btn-start');
+  const stop = document.getElementById('btn-stop');
+  if (start) start.disabled = true;
+  if (stop) stop.disabled = true;
+
+  setStatus('error', 'Web Speech API not supported');
   return false;
 }
 
@@ -416,6 +468,142 @@ function updateStereoInfoText(left = 0, right = 0) {
   el.textContent = `Stereo L:${left.toFixed(0)} R:${right.toFixed(0)} ${side}`;
 }
 
+function languageMeta(tag) {
+  if (!tag) return null;
+  const base = tag.toLowerCase();
+  return LANGUAGE_OPTIONS.find((l) => l.code.toLowerCase() === base)
+    || LANGUAGE_OPTIONS.find((l) => base.startsWith(l.code.toLowerCase().split('-')[0]))
+    || null;
+}
+
+function languageFlag(tag) {
+  const meta = languageMeta(tag);
+  return meta ? meta.flag : '🌐';
+}
+
+function updateLaneLanguage(profile, tag, shifted = false) {
+  if (!profile || !profile.el || !tag) return;
+  const badge = profile.el.querySelector(`#lane-${profile.id}-lang`);
+  if (!badge) return;
+  badge.textContent = `${languageFlag(tag)} ${tag}`;
+  badge.classList.toggle('shifted', !!shifted);
+}
+
+function normalizeSupportedLangs(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (typeof item === 'string') out.push(item);
+    if (item && typeof item === 'object' && typeof item.lang === 'string') out.push(item.lang);
+  }
+  return [...new Set(out)];
+}
+
+async function getSpeechLanguageCodes() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR || typeof SR.available !== 'function') {
+    return LANGUAGE_OPTIONS.map((l) => l.code);
+  }
+
+  try {
+    const requested = LANGUAGE_OPTIONS.map((l) => l.code);
+    const available = await SR.available(requested);
+    const normalized = normalizeSupportedLangs(available);
+    return normalized.length ? normalized : requested;
+  } catch {
+    return LANGUAGE_OPTIONS.map((l) => l.code);
+  }
+}
+
+async function initLanguageSelector() {
+  const select = document.getElementById('lang-select');
+  if (!select) return;
+
+  const codes = await getSpeechLanguageCodes();
+  const mapped = codes.map((code) => languageMeta(code) || { code, label: code, flag: '🌐' });
+  mapped.sort((a, b) => a.label.localeCompare(b.label));
+  State.supportedLanguages = mapped;
+
+  select.innerHTML = '';
+  for (const lang of mapped) {
+    const opt = document.createElement('option');
+    opt.value = lang.code;
+    opt.textContent = `${lang.flag} ${lang.label}`;
+    select.appendChild(opt);
+  }
+
+  if (!mapped.find((l) => l.code === State.recognitionLang)) {
+    State.recognitionLang = mapped[0]?.code || DEFAULT_RECOGNITION_LANG;
+  }
+  select.value = State.recognitionLang;
+}
+
+async function initLanguageDetection() {
+  // Try vendored copy first (works fully offline), then CDN, then heuristic fallback.
+  const sources = [
+    './vendor/franc-min/index.js',
+    'https://esm.sh/franc-min@6.2.0',
+  ];
+  for (const src of sources) {
+    try {
+      const mod = await import(src);
+      if (typeof mod.franc === 'function') {
+        State.languageDetector = mod.franc;
+        return;
+      }
+    } catch {
+      // try next source
+    }
+  }
+  State.languageDetector = null;
+}
+
+function heuristicLangFromText(text) {
+  const t = (text || '').toLowerCase();
+  if (/[¿¡]|\b(hola|gracias|usted|porque|est[áa]|buenos|buenas)\b/.test(t)) return 'es-ES';
+  if (/\b(bonjour|merci|oui|non|avec|pourquoi|fran[cç]ais)\b/.test(t)) return 'fr-FR';
+  if (/[а-яё]/i.test(t)) return 'ru-RU';
+  if (/[\u4e00-\u9fff]/.test(t)) return 'cmn-Hans-CN';
+  if (/[\u3040-\u30ff]/.test(t)) return 'ja-JP';
+  if (/[\uac00-\ud7af]/.test(t)) return 'ko-KR';
+  return null;
+}
+
+function detectLanguageTag(text) {
+  const clean = String(text || '').trim();
+  if (!clean || clean.length < 10) return null;
+
+  if (State.languageDetector) {
+    const code3 = State.languageDetector(clean, { minLength: 6 });
+    if (code3 && code3 !== 'und' && ISO3_TO_BCP47[code3]) {
+      return ISO3_TO_BCP47[code3];
+    }
+  }
+
+  return heuristicLangFromText(clean);
+}
+
+function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
+  if (!lang) return;
+  State.recognitionLang = lang;
+  localStorage.setItem('echolocate-rec-lang', lang);
+
+  const select = document.getElementById('lang-select');
+  if (select && select.value !== lang) select.value = lang;
+
+  if (SpeechEngine._rec) {
+    SpeechEngine._rec.lang = lang;
+    if (opts.fromUser && State.isRunning) {
+      setStatus('restarting', `Switching language to ${lang}...`);
+      try {
+        SpeechEngine._rec.stop();
+      } catch {
+        // Ignore stop race.
+      }
+    }
+  }
+}
+
 function pushDebugPoint(point) {
   State.debugPoints.push(point);
   if (State.debugPoints.length > CFG.DEBUG_POINTS_MAX) {
@@ -516,6 +704,7 @@ function buildLane(profile) {
   header.innerHTML = `
     <span class="lane-dot"></span>
     ${escapeHTML(profile.label)}
+    <span class="lane-language" id="lane-${profile.id}-lang">${languageFlag(State.recognitionLang)} ${escapeHTML(State.recognitionLang)}</span>
     <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
   `;
 
@@ -776,6 +965,11 @@ const TranscriptCtrl = {
     const profile = match.profile;
     profile.count += 1;
 
+    const detectedLang = detectLanguageTag(text) || State.recognitionLang;
+    const shiftedLang = !!profile.languageTag && profile.languageTag !== detectedLang;
+    profile.languageTag = detectedLang;
+    updateLaneLanguage(profile, detectedLang, shiftedLang);
+
     touchProfile(profile, now);
 
     const cardData = {
@@ -789,6 +983,7 @@ const TranscriptCtrl = {
       startedAt,
       endedAt: now,
       pitch: centroid,
+      languageTag: detectedLang,
       clusterDescriptor: profile.signatureStats ? signatureDescriptor(profile.signatureStats) : laneHintFromTone(tone),
       profileMatchRatio: match.matchRatio,
       profileMatchLevel: match.confidenceLevel,
@@ -830,7 +1025,7 @@ const SpeechEngine = {
 
     rec.continuous = true;
     rec.interimResults = true;
-    rec.lang = 'en-US';
+    rec.lang = State.recognitionLang || DEFAULT_RECOGNITION_LANG;
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
@@ -924,6 +1119,10 @@ const SpeechEngine = {
 
   async start() {
     if (State.isRunning) return;
+    if (!this._rec) {
+      setStatus('error', 'Web Speech API unavailable');
+      return;
+    }
     State.isRunning = true;
 
     try {
@@ -1080,6 +1279,7 @@ async function restoreSession() {
         lastSpokenAt: card.endedAt || Date.now(),
         avgPitch: card.pitch || 200,
         tone: card.tone || 'mid',
+        languageTag: card.languageTag || State.recognitionLang,
         el: null,
         cardsEl: null,
         count: 0,
@@ -1089,6 +1289,7 @@ async function restoreSession() {
       const num = parseInt(String(profile.id).replace('s', ''), 10);
       if (!isNaN(num)) State.nextSpeakerNum = Math.max(State.nextSpeakerNum, num + 1);
       ensureLane(profile);
+      updateLaneLanguage(profile, profile.languageTag, false);
     }
 
     profile.count += 1;
@@ -1105,6 +1306,7 @@ async function restoreSession() {
       startedAt: card.startedAt || Date.now(),
       endedAt: card.endedAt || Date.now(),
       pitch: card.pitch || profile.avgPitch,
+      languageTag: card.languageTag || profile.languageTag || State.recognitionLang,
       profileMatchRatio: card.profileMatchRatio ?? 0,
       profileMatchLevel: card.profileMatchLevel || profile.matchLevel || 'medium',
       stereoBalance: card.stereoBalance ?? 0,
@@ -1125,6 +1327,7 @@ function initControls() {
   const btnExport = document.getElementById('btn-export');
   const btnDebug = document.getElementById('btn-debug');
   const btnStereo = document.getElementById('btn-stereo');
+  const langSelect = document.getElementById('lang-select');
 
   btnStart.addEventListener('click', async () => {
     btnStart.disabled = true;
@@ -1175,6 +1378,19 @@ function initControls() {
     updateStereoInfoText();
   });
 
+  if (langSelect) {
+    langSelect.addEventListener('change', () => {
+      applyRecognitionLanguage(langSelect.value, { fromUser: true });
+    });
+  }
+
+  document.querySelectorAll('.btn-quick-lang').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const lang = btn.getAttribute('data-lang');
+      applyRecognitionLanguage(lang, { fromUser: true });
+    });
+  });
+
   const btnTheme = document.getElementById('theme-toggle');
   if (btnTheme) {
     btnTheme.addEventListener('click', () => {
@@ -1195,7 +1411,7 @@ function initControls() {
 
 async function boot() {
   checkSecureContext();
-  if (!checkBrowserSupport()) return;
+  const hasSpeech = checkBrowserSupport();
 
   initTheme();
 
@@ -1204,9 +1420,12 @@ async function boot() {
     if (notice) notice.classList.add('hidden');
   }
 
+  await initLanguageSelector();
+  await initLanguageDetection();
+
   await registerServiceWorker();
   TranscriptCtrl.init();
-  SpeechEngine.init();
+  if (hasSpeech) SpeechEngine.init();
   initControls();
   updateMicInfoText();
   updateDebugUI();

@@ -39,6 +39,38 @@ Before committing, verify:
 5. Privacy notice text remains accurate and visible until dismissed
 6. Light and dark themes both remain readable
 
+## Local Development
+
+Run the app without an internet connection using the bundled server:
+
+```bash
+python3 server.py          # http://localhost:8080/
+python3 server.py 9000     # alternate port
+```
+
+All JavaScript dependencies are vendored in `vendor/` and committed to the
+repository, so cloning the repo is sufficient for fully offline use.
+
+To refresh vendored files (e.g., after a version bump in download-deps.sh):
+
+```bash
+./download-deps.sh
+```
+
+Optional on-device language-id model (~14 MB, improves lang detection):
+
+```bash
+./download-models.sh       # downloads to vendor/transformers, vendor/onnx-runtime, models/language-id
+```
+
+EchoLocate detects model files at startup; no code change required.
+
+### Local dev notes for agents
+- `vendor/` files are checked into git — do not gitignore them
+- `models/` directory houses optional on-device model files; only `.gitkeep` is committed
+- Mic access and service workers require a secure context; localhost qualifies without HTTPS
+- Use `python3 server.py` (not `open index.html`) because the service worker needs HTTP(S)
+
 ## Deployment Notes
 - Branch: main
 - Host: GitHub Pages

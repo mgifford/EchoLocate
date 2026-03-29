@@ -18,15 +18,12 @@
   </script>
   <link rel="stylesheet" href="style.css" />
   <!--
-    HTMX 2.x — drives the fake-API swap pattern.
-    The Service Worker (sw.js) intercepts POST /api/add-card and returns
-    an HTML card fragment; HTMX swaps it into the correct lane.
-    integrity hash pinned for supply-chain safety.
+    Vendored dependencies — served from vendor/ so the app works completely
+    offline and on localhost without any CDN requests.
+    To update: run ./download-deps.sh
   -->
-  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
-          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
-          crossorigin="anonymous"></script>
-  <script src="https://unpkg.com/meyda@5.6.3/dist/web/meyda.min.js" crossorigin="anonymous"></script>
+  <script src="vendor/htmx.min.js"></script>
+  <script src="vendor/meyda.min.js"></script>
 </head>
 <body>
 
@@ -49,6 +46,11 @@
     not directly from the filesystem (<code>file://</code>).
   </div>
 
+  <div id="speech-warning" class="hidden" role="alert" aria-live="assertive" aria-atomic="true">
+    <strong>⚠ Web Speech API not supported</strong> — This browser cannot run live transcription here.
+    Try current <strong>Chrome</strong> or <strong>Edge</strong>.
+  </div>
+
   <header class="app-header" role="banner">
     <div class="header-inner">
 
@@ -69,6 +71,12 @@
         <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
         <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
         <button id="btn-clear" class="btn btn-danger"    aria-label="Clear locally saved discussion">Clear Local</button>
+
+        <label class="lang-picker-label" for="lang-select">Language</label>
+        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
+        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="en-US" aria-label="Quick switch to English">English</button>
+        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="es-ES" aria-label="Quick switch to Spanish">Spanish</button>
+        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="fr-FR" aria-label="Quick switch to French">French</button>
 
         <!-- Theme toggle — last in tab order per a11y guidance -->
         <button id="theme-toggle"

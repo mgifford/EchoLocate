@@ -1,0 +1,17 @@
+feat: offline-first vendor deps, language detection, local dev tooling
+
+- Vendor HTMX 2.0.4, Meyda 5.6.3, franc-min 6.2.0 to vendor/ (committed
+  to repo so GitHub Pages and local use share the same JS paths)
+- franc-min detection tries vendor/ first, falls back to esm.sh CDN,
+  then heuristic regex if both unavailable
+- Add speech-warning banner for unsupported browsers (Chrome/Edge note)
+- Language selector with 35 languages + EN/ES/FR quick-switch buttons
+- Per-lane language flag badge (highlights on language shift detected)
+- server.py: Python stdlib local server (port 8080, correct MIME types)
+- download-deps.sh: idempotent curl script to refresh vendor/ files
+- download-models.sh: optional ~14 MB download for neural language-id
+  model via Transformers.js + ONNX Runtime WASM (97 languages, offline)
+- models/.gitkeep: placeholder for on-device model files
+- INSTALL.txt: three-tier guide (live demo / local run / ML models)
+- README.md: rewrite with demo link, features, use cases, architecture
+- AGENTS.md: add Local Development section with server and model scripts

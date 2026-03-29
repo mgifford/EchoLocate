@@ -153,6 +153,26 @@ body {
 #secure-warning strong { font-weight: 700; }
 #secure-warning code   { font-family: monospace; opacity: 0.8; }
 
+#speech-warning {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #2a0909;
+  border-bottom: 2px solid var(--danger);
+  color: #ffb3b3;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+  z-index: 100;
+}
+
+[data-theme="light"] #speech-warning {
+  background: #fff2f2;
+  color: #a61e1e;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HEADER
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -275,6 +295,29 @@ body {
 .btn-secondary { background: var(--btn-secondary-bg); color: var(--btn-secondary-fg); }
 .btn-danger    { background: var(--btn-danger-bg); color: var(--btn-danger-fg); border: 1px solid var(--btn-danger-border); }
 
+.lang-picker-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.lang-select {
+  height: 33px;
+  min-width: 170px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  padding: 0 0.45rem;
+}
+
+.btn-quick-lang {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.76rem;
+}
+
 /* Theme toggle — minimal icon button sitting in the controls row */
 .theme-toggle {
   background: transparent;
@@ -368,6 +411,22 @@ body {
   color: #626262;
   text-transform: none;
   letter-spacing: 0;
+}
+
+.lane-language {
+  margin-left: 0.45rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lane-language.shifted {
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 .lane-confidence {
@@ -663,6 +722,9 @@ body {
 
   .controls { gap: 0.35rem; }
   .btn      { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+  .lang-picker-label,
+  .lang-select,
+  .btn-quick-lang { display: none; }
 
   .mic-status { display: none; } /* reclaim space on small screens */
   .mic-info   { display: none; }
