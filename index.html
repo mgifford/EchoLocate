@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="EchoLocate Phase 1 — Real-time accessible live captions with simulated speaker diarization" />
+  <title>EchoLocate — Live Captions</title>
+  <link rel="stylesheet" href="style.css" />
+  <!--
+    HTMX 2.x — drives the fake-API swap pattern.
+    The Service Worker (sw.js) intercepts POST /api/add-card and returns
+    an HTML card fragment; HTMX swaps it into the correct lane.
+    integrity hash pinned for supply-chain safety.
+  -->
+  <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"
+          integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+          crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Injected visible by JS when window.isSecureContext === false -->
+  <div id="secure-warning" class="hidden" role="alert" aria-live="assertive" aria-atomic="true">
+    <strong>⚠ HTTPS Required</strong> — EchoLocate needs a secure connection to access your microphone.
+    Please open this via <strong>GitHub Pages</strong> or a local HTTPS / localhost server,
+    not directly from the filesystem (<code>file://</code>).
+  </div>
+
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">◎</span>
+        <h1>EchoLocate</h1>
+        <span class="phase-badge" aria-label="Phase 1 — Local captioning">Phase 1</span>
+      </div>
+
+      <div class="controls" role="toolbar" aria-label="Transcription controls">
+        <div class="mic-status" aria-live="polite" aria-label="Microphone status">
+          <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+          <span id="status-text">Ready</span>
+        </div>
+        <button id="btn-start" class="btn btn-primary"   aria-label="Start transcription">Start</button>
+        <button id="btn-stop"  class="btn btn-secondary" aria-label="Stop transcription"  disabled>Stop</button>
+        <button id="btn-clear" class="btn btn-danger"    aria-label="Clear all cards">Clear</button>
+      </div>
+
+    </div>
+  </header>
+
+  <main class="app-main" id="app-main">
+
+    <!--
+      The two "Lanes" — Speaker A (low pitch, left) · Speaker B (high pitch, right).
+      role="log" tells screen readers to announce new child content as it arrives.
+    -->
+    <div class="lanes-grid" id="lanes-container"
+         role="log"
+         aria-label="Live transcript — two speaker lanes"
+         aria-relevant="additions">
+
+      <section class="lane lane-a" aria-label="Speaker A lane — low pitch voice">
+        <header class="lane-header" aria-hidden="true">
+          <span class="lane-dot dot-a"></span>
+          Speaker A
+          <span class="lane-hint">Low pitch</span>
+        </header>
+        <div class="lane-cards" id="lane-a-cards"></div>
+      </section>
+
+      <div class="lane-sep" role="separator" aria-hidden="true"></div>
+
+      <section class="lane lane-b" aria-label="Speaker B lane — high pitch voice">
+        <header class="lane-header" aria-hidden="true">
+          <span class="lane-dot dot-b"></span>
+          Speaker B
+          <span class="lane-hint">High pitch</span>
+        </header>
+        <div class="lane-cards" id="lane-b-cards"></div>
+      </section>
+
+    </div>
+
+    <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->
+    <div class="interim-strip"
+         role="status"
+         aria-live="polite"
+         aria-atomic="true"
+         aria-label="Speech currently in progress">
+      <span class="interim-label" aria-hidden="true">Live</span>
+      <span id="live-transcript" class="interim-text"></span>
+    </div>
+
+  </main>
+
+  <footer class="app-footer" role="contentinfo">
+    <!-- Waveform canvas — pure visual feedback that the mic is active -->
+    <canvas id="visualizer"
+            role="img"
+            aria-label="Live audio waveform — confirms microphone is receiving audio"></canvas>
+
+    <div class="footer-meta" aria-hidden="true">
+      <span id="card-count">0 cards</span>
+      <span id="speaker-indicator"></span>
+      <span class="autosave-note">Auto-saved ✓</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
