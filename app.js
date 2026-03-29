@@ -1,8 +1,8 @@
 /**
  * EchoLocate Phase 1 — app.js
  *
- * Dynamic speaker lanes with inactivity minimization and VTT export.
- * Uses Web Speech API + Web Audio API + HTMX + Service Worker local routes.
+ * Dynamic voice clusters with 10-second room profiling and VTT export.
+ * Uses Web Speech API + Web Audio API + Meyda + HTMX + Service Worker local routes.
  */
 
 'use strict';
@@ -17,6 +17,11 @@ const CFG = Object.freeze({
   VOICE_MATCH_RATIO:  0.18,
   HIGH_CONF_RATIO:    0.06,
   MED_CONF_RATIO:     0.12,
+  SIGNATURE_MATCH_DISTANCE: 0.22,
+  SIGNATURE_HIGH_DISTANCE:  0.11,
+  SIGNATURE_MED_DISTANCE:   0.18,
+  ROOM_PROFILE_MS:          10_000,
+  MFCC_COEFFS:              13,
   MAX_SPEAKERS:       6,
   DEBUG_POINTS_MAX:   120,
 });
@@ -36,9 +41,12 @@ const State = {
   currentUtteranceStartedAt: null,
   audioCtx:                  null,
   analyser:                  null,
+  meydaAnalyzer:             null,
+  latestSignatureFrame:      null,
+  utteranceSignatureSamples: [],
+  profilingStartedAt:        0,
   sampleTimer:               null,
   visualizer:                null,
-  laneSweepTimer:            null,
   profiles:                  [], // [{id,label,color,lastSpokenAt,avgPitch,tone,el,cardsEl,count}]
   activeSpeakerId:           null,
   nextSpeakerNum:            1,
@@ -216,6 +224,7 @@ function spectralCentroid() {
 function startPitchSampling() {
   if (State.sampleTimer) return;
   State.utteranceSamples = [];
+  State.utteranceSignatureSamples = [];
   State.stereoSamplesL = [];
   State.stereoSamplesR = [];
   State.sampleTimer = setInterval(() => {
@@ -225,6 +234,12 @@ function startPitchSampling() {
       State.pitchHistory.push(c);
       if (State.pitchHistory.length > CFG.PITCH_WINDOW) State.pitchHistory.shift();
     }
+
+    if (State.latestSignatureFrame) {
+      State.utteranceSignatureSamples.push(State.latestSignatureFrame);
+    }
+
+    updateProfilingStatus();
 
     if (State.stereoEnabled && State.stereoAnalyserL && State.stereoAnalyserR) {
       const left = channelEnergy(State.stereoAnalyserL);
@@ -244,6 +259,83 @@ function stopPitchSampling() {
 function mean(arr) {
   if (!arr.length) return 0;
   return arr.reduce((sum, v) => sum + v, 0) / arr.length;
+}
+
+function isSignatureModeEnabled() {
+  return !!window.Meyda;
+}
+
+function isProfilingPhase() {
+  if (!isSignatureModeEnabled() || !State.profilingStartedAt) return false;
+  return (Date.now() - State.profilingStartedAt) < CFG.ROOM_PROFILE_MS;
+}
+
+function updateProfilingStatus() {
+  if (!State.isRunning) return;
+  if (!isSignatureModeEnabled()) {
+    setStatus('active', 'Listening (pitch fallback)');
+    return;
+  }
+
+  if (isProfilingPhase()) {
+    const remainingMs = Math.max(0, CFG.ROOM_PROFILE_MS - (Date.now() - State.profilingStartedAt));
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    setStatus('active', `Profiling room... ${seconds}s`);
+  } else {
+    setStatus('active', 'Listening (voice clusters ready)');
+  }
+}
+
+function meanVector(vectors) {
+  if (!vectors.length) return [];
+  const dim = vectors[0].length;
+  const acc = new Array(dim).fill(0);
+  for (const v of vectors) {
+    for (let i = 0; i < dim; i++) acc[i] += v[i] || 0;
+  }
+  return acc.map((x) => x / vectors.length);
+}
+
+function vectorDistance(a, b) {
+  if (!a || !b || !a.length || !b.length || a.length !== b.length) return Number.POSITIVE_INFINITY;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = (a[i] || 0) - (b[i] || 0);
+    sum += d * d;
+  }
+  return Math.sqrt(sum / a.length);
+}
+
+function buildSignatureVector(frame, fallbackCentroid) {
+  if (!frame) return null;
+
+  const mfcc = Array.isArray(frame.mfcc) ? frame.mfcc.slice(1, 8) : [];
+  const mfccScaled = mfcc.map((v) => (v || 0) / 100);
+  const centroid = Number.isFinite(frame.spectralCentroid) ? frame.spectralCentroid : (fallbackCentroid || 0);
+  const rolloff = Number.isFinite(frame.spectralRolloff) ? frame.spectralRolloff : centroid;
+  const flatness = Number.isFinite(frame.spectralFlatness) ? frame.spectralFlatness : 0;
+  const zcr = Number.isFinite(frame.zcr) ? frame.zcr : 0;
+
+  return [
+    ...mfccScaled,
+    centroid / 6000,
+    rolloff / 6000,
+    Math.min(1, Math.max(0, flatness * 10)),
+    Math.min(1, Math.max(0, zcr * 10)),
+  ];
+}
+
+function signatureDescriptor(features) {
+  if (!features) return 'Profile warming up';
+
+  const attack = features.zcr > 0.065 ? 'Sharp attack' : 'Smooth attack';
+  const formants = features.spectralCentroid > 1800 ? 'Higher formants' : 'Lower formants';
+  const tempo = features.rms > 0.05 ? 'Stronger tempo' : 'Softer tempo';
+  return `${attack}, ${formants}, ${tempo}`;
+}
+
+function clusterLabelFromIndex(n) {
+  return `Cluster ${String.fromCharCode(64 + Math.min(n, 26))}`;
 }
 
 function classifyTone(value) {
@@ -283,7 +375,7 @@ function updateSpeakerIndicator(profile) {
     el.textContent = '';
     return;
   }
-  el.textContent = `Active: ${profile.label}`;
+  el.textContent = `Active cluster: ${profile.label}`;
   el.style.color = profile.color;
 }
 
@@ -292,16 +384,20 @@ function updateMicInfoText() {
   if (!el) return;
 
   if (!State.micDiagnostics) {
-    el.textContent = 'Voice split: tone profile only';
+    el.textContent = isSignatureModeEnabled() ? 'Voice split: Meyda signatures + pitch fallback' : 'Voice split: tone profile only';
     return;
   }
 
   const d = State.micDiagnostics;
   const channels = d.channelCount || 1;
   if (channels > 1) {
-    el.textContent = `Mic channels: ${channels} (transcript still mixed; separation is mainly tone-based)`;
+    el.textContent = isSignatureModeEnabled()
+      ? `Mic channels: ${channels} (Meyda timbre clusters + pitch fallback)`
+      : `Mic channels: ${channels} (transcript still mixed; separation is mainly tone-based)`;
   } else {
-    el.textContent = 'Mic channels: 1 (speaker split is tone-based)';
+    el.textContent = isSignatureModeEnabled()
+      ? 'Mic channels: 1 (Meyda timbre clusters + pitch fallback)'
+      : 'Mic channels: 1 (speaker split is tone-based)';
   }
 }
 
@@ -391,8 +487,8 @@ function renderDebugOverlay() {
   const switched = prev && prev.speakerId !== latest.speakerId;
   const ratioText = Number.isFinite(latest.matchRatio) ? latest.matchRatio.toFixed(3) : 'n/a';
   summary.textContent = switched
-    ? `Switch detected. New speaker ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`
-    : `Stable speaker ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`;
+    ? `Switch detected. New cluster ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`
+    : `Stable cluster ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`;
 }
 
 function updateDebugUI() {
@@ -454,7 +550,7 @@ function touchProfile(profile, now) {
 function newProfile(pitch, tone) {
   const n = State.nextSpeakerNum;
   State.nextSpeakerNum += 1;
-  const label = `Speaker ${String.fromCharCode(64 + Math.min(n, 26))}`;
+  const label = clusterLabelFromIndex(n);
 
   return {
     id: `s${n}`,
@@ -467,6 +563,8 @@ function newProfile(pitch, tone) {
     cardsEl: null,
     count: 0,
     matchLevel: 'medium',
+    signature: null,
+    signatureStats: null,
   };
 }
 
@@ -476,59 +574,113 @@ function confidenceFromRatio(ratio) {
   return 'low';
 }
 
-function resolveSpeakerProfile(pitch) {
-  const tone = classifyTone(pitch);
+function confidenceFromSignatureDistance(distance) {
+  if (distance <= CFG.SIGNATURE_HIGH_DISTANCE) return 'high';
+  if (distance <= CFG.SIGNATURE_MED_DISTANCE) return 'medium';
+  return 'low';
+}
+
+function resolveSpeakerProfile(metrics) {
+  const pitch = metrics.centroid;
+  const tone = metrics.tone;
+  const signature = metrics.signature;
+  const signatureStats = metrics.signatureStats;
+
   if (!State.profiles.length) {
     const first = newProfile(pitch, tone);
+    first.signature = signature || null;
+    first.signatureStats = signatureStats || null;
     State.profiles.push(first);
     ensureLane(first);
     first.matchLevel = 'medium';
+    if (first.el && first.signatureStats) {
+      const hint = first.el.querySelector('.lane-hint');
+      if (hint) hint.textContent = signatureDescriptor(first.signatureStats);
+    }
     return { profile: first, matchRatio: 0, confidenceLevel: first.matchLevel, createdNew: true };
   }
 
   let best = null;
-  let bestRatio = Number.POSITIVE_INFINITY;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let useSignature = !!signature;
+
   for (const p of State.profiles) {
-    const ratio = Math.abs(p.avgPitch - pitch) / Math.max(p.avgPitch, pitch, 1);
-    if (ratio < bestRatio) {
-      bestRatio = ratio;
+    const distance = (useSignature && p.signature)
+      ? vectorDistance(p.signature, signature)
+      : Math.abs(p.avgPitch - pitch) / Math.max(p.avgPitch, pitch, 1);
+    if (distance < bestDistance) {
+      bestDistance = distance;
       best = p;
     }
   }
 
-  if (best && (bestRatio <= CFG.VOICE_MATCH_RATIO || State.profiles.length >= CFG.MAX_SPEAKERS)) {
+  const threshold = useSignature ? CFG.SIGNATURE_MATCH_DISTANCE : CFG.VOICE_MATCH_RATIO;
+  if (best && (bestDistance <= threshold || State.profiles.length >= CFG.MAX_SPEAKERS)) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
     best.tone = tone;
-    best.matchLevel = confidenceFromRatio(bestRatio);
+    if (signature) {
+      if (best.signature) {
+        best.signature = best.signature.map((v, i) => (v * 0.72) + ((signature[i] || 0) * 0.28));
+      } else {
+        best.signature = signature;
+      }
+    }
+    best.signatureStats = signatureStats || best.signatureStats;
+    best.matchLevel = useSignature ? confidenceFromSignatureDistance(bestDistance) : confidenceFromRatio(bestDistance);
+
     if (best.el) {
       const hint = best.el.querySelector('.lane-hint');
-      if (hint) hint.textContent = laneHintFromTone(tone);
+      if (hint) {
+        hint.textContent = best.signatureStats
+          ? signatureDescriptor(best.signatureStats)
+          : laneHintFromTone(tone);
+      }
     }
-    return { profile: best, matchRatio: bestRatio, confidenceLevel: best.matchLevel, createdNew: false };
+    return { profile: best, matchRatio: bestDistance, confidenceLevel: best.matchLevel, createdNew: false };
   }
 
   const next = newProfile(pitch, tone);
+  next.signature = signature || null;
+  next.signatureStats = signatureStats || null;
   State.profiles.push(next);
   ensureLane(next);
   next.matchLevel = 'low';
+  if (next.el && next.signatureStats) {
+    const hint = next.el.querySelector('.lane-hint');
+    if (hint) hint.textContent = signatureDescriptor(next.signatureStats);
+  }
   return { profile: next, matchRatio: 1, confidenceLevel: next.matchLevel, createdNew: true };
 }
 
 function flushUtteranceMetrics() {
   const samples = State.utteranceSamples;
+  const signatureFrames = State.utteranceSignatureSamples;
   const stereoL = State.stereoSamplesL;
   const stereoR = State.stereoSamplesR;
   stopPitchSampling();
   State.utteranceSamples = [];
+  State.utteranceSignatureSamples = [];
   State.stereoSamplesL = [];
   State.stereoSamplesR = [];
 
   const centroid = samples.length ? mean(samples) : (State.pitchHistory.length ? mean(State.pitchHistory) : 200);
   const tone = classifyTone(centroid);
+  const signatureStats = signatureFrames.length
+    ? {
+        spectralCentroid: mean(signatureFrames.map((f) => f.spectralCentroid || centroid)),
+        spectralRolloff: mean(signatureFrames.map((f) => f.spectralRolloff || centroid)),
+        spectralFlatness: mean(signatureFrames.map((f) => f.spectralFlatness || 0)),
+        zcr: mean(signatureFrames.map((f) => f.zcr || 0)),
+        rms: mean(signatureFrames.map((f) => f.rms || 0)),
+      }
+    : null;
+  const signature = signatureFrames.length
+    ? meanVector(signatureFrames.map((f) => buildSignatureVector(f, centroid)).filter(Boolean))
+    : null;
   const leftEnergy = stereoL.length ? mean(stereoL) : 0;
   const rightEnergy = stereoR.length ? mean(stereoR) : 0;
   const balance = (leftEnergy + rightEnergy) > 0 ? (leftEnergy - rightEnergy) / (leftEnergy + rightEnergy) : 0;
-  return { centroid, tone, leftEnergy, rightEnergy, balance };
+  return { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance };
 }
 
 const Storage = {
@@ -619,8 +771,8 @@ const TranscriptCtrl = {
     const startedAt = State.currentUtteranceStartedAt || (now - 1500);
     State.currentUtteranceStartedAt = null;
 
-    const { centroid, tone, leftEnergy, rightEnergy, balance } = flushUtteranceMetrics();
-    const match = resolveSpeakerProfile(centroid);
+    const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance } = flushUtteranceMetrics();
+    const match = resolveSpeakerProfile({ centroid, tone, signature, signatureStats });
     const profile = match.profile;
     profile.count += 1;
 
@@ -637,6 +789,7 @@ const TranscriptCtrl = {
       startedAt,
       endedAt: now,
       pitch: centroid,
+      clusterDescriptor: profile.signatureStats ? signatureDescriptor(profile.signatureStats) : laneHintFromTone(tone),
       profileMatchRatio: match.matchRatio,
       profileMatchLevel: match.confidenceLevel,
       stereoBalance: balance,
@@ -681,8 +834,16 @@ const SpeechEngine = {
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
-      setStatus('active', 'Listening...');
+      State.profilingStartedAt = Date.now();
+      updateProfilingStatus();
       startPitchSampling();
+      if (State.meydaAnalyzer) {
+        try {
+          State.meydaAnalyzer.start();
+        } catch {
+          // Meyda start can race if already running.
+        }
+      }
       this._resetWatchdog();
     };
 
@@ -726,6 +887,13 @@ const SpeechEngine = {
         setStatus('idle', 'Ready');
         if (State.visualizer) State.visualizer.stop();
         stopPitchSampling();
+        if (State.meydaAnalyzer) {
+          try {
+            State.meydaAnalyzer.stop();
+          } catch {
+            // Ignore stop race.
+          }
+        }
         TranscriptCtrl.clearInterim();
       }
     };
@@ -773,6 +941,14 @@ const SpeechEngine = {
     State.isRunning = false;
     clearTimeout(this._watchdogTimer);
     stopPitchSampling();
+    State.latestSignatureFrame = null;
+    if (State.meydaAnalyzer) {
+      try {
+        State.meydaAnalyzer.stop();
+      } catch {
+        // Ignore stop race.
+      }
+    }
     try {
       this._rec.stop();
     } catch {
@@ -780,6 +956,27 @@ const SpeechEngine = {
     }
   },
 };
+
+function initMeyda(source) {
+  if (!window.Meyda || !State.audioCtx || !source) return;
+  if (State.meydaAnalyzer) return;
+
+  try {
+    State.meydaAnalyzer = window.Meyda.createMeydaAnalyzer({
+      audioContext: State.audioCtx,
+      source,
+      bufferSize: 1024,
+      featureExtractors: ['mfcc', 'spectralCentroid', 'spectralRolloff', 'spectralFlatness', 'zcr', 'rms'],
+      numberOfMFCCCoefficients: CFG.MFCC_COEFFS,
+      callback: (features) => {
+        State.latestSignatureFrame = features;
+      },
+    });
+  } catch (err) {
+    State.meydaAnalyzer = null;
+    console.warn('[EchoLocate] Meyda init skipped:', err.message);
+  }
+}
 
 async function setupAudio() {
   if (State.audioCtx) {
@@ -807,6 +1004,7 @@ async function setupAudio() {
   State.analyser.fftSize = 2048;
   State.analyser.smoothingTimeConstant = 0.8;
   source.connect(State.analyser);
+  initMeyda(source);
 
   if ((State.micDiagnostics.channelCount || 1) > 1) {
     const splitter = State.audioCtx.createChannelSplitter(2);
@@ -850,7 +1048,7 @@ function toVtt(cards) {
 
     out += `${i + 1}\n`;
     out += `${formatVttTime(start - base)} --> ${formatVttTime(Math.max(end, start + 300) - base)}\n`;
-    out += `${cur.speakerLabel || 'Speaker'}: ${cur.text}\n\n`;
+    out += `${cur.speakerLabel || 'Cluster'}: ${cur.text}\n\n`;
   }
 
   return out;
@@ -877,7 +1075,7 @@ async function restoreSession() {
     if (!profile) {
       profile = {
         id: card.speakerId || `s${State.nextSpeakerNum}`,
-        label: card.speakerLabel || `Speaker ${String.fromCharCode(64 + State.nextSpeakerNum)}`,
+        label: card.speakerLabel || clusterLabelFromIndex(State.nextSpeakerNum),
         color: card.speakerColor || PALETTE[(State.nextSpeakerNum - 1) % PALETTE.length],
         lastSpokenAt: card.endedAt || Date.now(),
         avgPitch: card.pitch || 200,
@@ -941,6 +1139,9 @@ function initControls() {
   });
 
   btnClear.addEventListener('click', () => {
+    const confirmed = window.confirm('Clear locally saved discussion from this browser? This cannot be undone.');
+    if (!confirmed) return;
+
     document.getElementById('lanes-container').innerHTML = '';
     document.getElementById('speaker-indicator').textContent = '';
     TranscriptCtrl.clearInterim();

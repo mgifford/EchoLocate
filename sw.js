@@ -127,7 +127,7 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
   style="opacity:${opacity};--speaker-color:${escapeAttr(speakerColor)}"
 >
   ${displayText}
-  <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new speaker?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
+  <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new cluster?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
 </article>`;
 }
 
