@@ -14,12 +14,10 @@ const CFG = Object.freeze({
   WATCHDOG_MS:        12_000,
   CARD_LIMIT:         500,
   RESTART_DELAY:      150,
-  INACTIVE_AFTER_MS:  30_000,
-  MINIMIZE_SWEEP_MS:  5_000,
   VOICE_MATCH_RATIO:  0.18,
   HIGH_CONF_RATIO:    0.06,
   MED_CONF_RATIO:     0.12,
-  MAX_SPEAKERS:       8,
+  MAX_SPEAKERS:       6,
   DEBUG_POINTS_MAX:   120,
 });
 
@@ -76,6 +74,29 @@ function checkBrowserSupport() {
       </p>
     </div>`;
   return false;
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────────────────
+const THEME_KEY = 'echolocate-theme';
+
+function applyTheme(theme, persist = true) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  if (persist) localStorage.setItem(THEME_KEY, theme);
+}
+
+function initTheme() {
+  // inline script in <head> already set data-theme; here we sync aria-label
+  // and listen for OS preference changes when user hasn't made a manual choice.
+  const saved = localStorage.getItem(THEME_KEY);
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(saved || (prefersDark ? 'dark' : 'light'), !!saved);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+    if (!localStorage.getItem(THEME_KEY)) applyTheme(e.matches ? 'dark' : 'light', false);
+  });
 }
 
 async function registerServiceWorker() {
@@ -399,7 +420,6 @@ function buildLane(profile) {
   header.innerHTML = `
     <span class="lane-dot"></span>
     ${escapeHTML(profile.label)}
-    <span class="lane-confidence conf-medium" id="lane-${profile.id}-confidence">MED</span>
     <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
   `;
 
@@ -415,14 +435,6 @@ function buildLane(profile) {
   profile.cardsEl = cards;
 }
 
-function setLaneConfidence(profile, level) {
-  if (!profile || !profile.el) return;
-  const badge = profile.el.querySelector('.lane-confidence');
-  if (!badge) return;
-  badge.className = `lane-confidence conf-${level}`;
-  badge.textContent = level.toUpperCase();
-}
-
 function ensureLane(profile) {
   if (!profile.el || !profile.cardsEl) buildLane(profile);
 }
@@ -434,30 +446,9 @@ function touchProfile(profile, now) {
   for (const p of State.profiles) {
     if (!p.el) continue;
     p.el.classList.toggle('active', p.id === profile.id);
-    p.el.classList.remove('minimized');
   }
 
   updateSpeakerIndicator(profile);
-}
-
-function sweepInactiveLanes() {
-  const now = Date.now();
-  for (const p of State.profiles) {
-    if (!p.el) continue;
-    const inactiveMs = now - p.lastSpokenAt;
-    const shouldMinimize = inactiveMs > CFG.INACTIVE_AFTER_MS && p.id !== State.activeSpeakerId;
-    p.el.classList.toggle('minimized', shouldMinimize);
-  }
-}
-
-function startLaneMinimizer() {
-  clearInterval(State.laneSweepTimer);
-  State.laneSweepTimer = setInterval(sweepInactiveLanes, CFG.MINIMIZE_SWEEP_MS);
-}
-
-function stopLaneMinimizer() {
-  clearInterval(State.laneSweepTimer);
-  State.laneSweepTimer = null;
 }
 
 function newProfile(pitch, tone) {
@@ -492,7 +483,6 @@ function resolveSpeakerProfile(pitch) {
     State.profiles.push(first);
     ensureLane(first);
     first.matchLevel = 'medium';
-    setLaneConfidence(first, first.matchLevel);
     return { profile: first, matchRatio: 0, confidenceLevel: first.matchLevel, createdNew: true };
   }
 
@@ -514,7 +504,6 @@ function resolveSpeakerProfile(pitch) {
       const hint = best.el.querySelector('.lane-hint');
       if (hint) hint.textContent = laneHintFromTone(tone);
     }
-    setLaneConfidence(best, best.matchLevel);
     return { profile: best, matchRatio: bestRatio, confidenceLevel: best.matchLevel, createdNew: false };
   }
 
@@ -522,7 +511,6 @@ function resolveSpeakerProfile(pitch) {
   State.profiles.push(next);
   ensureLane(next);
   next.matchLevel = 'low';
-  setLaneConfidence(next, next.matchLevel);
   return { profile: next, matchRatio: 1, confidenceLevel: next.matchLevel, createdNew: true };
 }
 
@@ -597,6 +585,7 @@ async function postCard(cardData) {
       speakerColor: cardData.speakerColor,
       confidence: String(cardData.confidence),
       timestamp: cardData.timestamp,
+      profileMatchLevel: cardData.profileMatchLevel || 'high',
     },
   });
 
@@ -675,7 +664,6 @@ const TranscriptCtrl = {
     updateCardCount();
 
     startPitchSampling();
-    sweepInactiveLanes();
   },
 };
 
@@ -695,7 +683,6 @@ const SpeechEngine = {
     rec.onstart = () => {
       setStatus('active', 'Listening...');
       startPitchSampling();
-      startLaneMinimizer();
       this._resetWatchdog();
     };
 
@@ -739,7 +726,6 @@ const SpeechEngine = {
         setStatus('idle', 'Ready');
         if (State.visualizer) State.visualizer.stop();
         stopPitchSampling();
-        stopLaneMinimizer();
         TranscriptCtrl.clearInterim();
       }
     };
@@ -787,7 +773,6 @@ const SpeechEngine = {
     State.isRunning = false;
     clearTimeout(this._watchdogTimer);
     stopPitchSampling();
-    stopLaneMinimizer();
     try {
       this._rec.stop();
     } catch {
@@ -906,7 +891,6 @@ async function restoreSession() {
       const num = parseInt(String(profile.id).replace('s', ''), 10);
       if (!isNaN(num)) State.nextSpeakerNum = Math.max(State.nextSpeakerNum, num + 1);
       ensureLane(profile);
-      setLaneConfidence(profile, profile.matchLevel);
     }
 
     profile.count += 1;
@@ -933,7 +917,6 @@ async function restoreSession() {
     await postCard(normalized);
   }
 
-  sweepInactiveLanes();
   updateCardCount();
 }
 
@@ -990,11 +973,35 @@ function initControls() {
     btnStereo.textContent = State.stereoEnabled ? 'Stereo On' : 'Stereo';
     updateStereoInfoText();
   });
+
+  const btnTheme = document.getElementById('theme-toggle');
+  if (btnTheme) {
+    btnTheme.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  const btnPrivacyDismiss = document.getElementById('btn-privacy-dismiss');
+  if (btnPrivacyDismiss) {
+    btnPrivacyDismiss.addEventListener('click', () => {
+      const notice = document.getElementById('privacy-notice');
+      if (notice) notice.classList.add('hidden');
+      localStorage.setItem('echolocate-privacy-dismissed', '1');
+    });
+  }
 }
 
 async function boot() {
   checkSecureContext();
   if (!checkBrowserSupport()) return;
+
+  initTheme();
+
+  if (localStorage.getItem('echolocate-privacy-dismissed')) {
+    const notice = document.getElementById('privacy-notice');
+    if (notice) notice.classList.add('hidden');
+  }
 
   await registerServiceWorker();
   TranscriptCtrl.init();

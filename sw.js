@@ -65,17 +65,18 @@ self.addEventListener('fetch', (event) => {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleAddCard(request) {
-  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp;
+  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel;
 
   try {
     const body = await request.formData();
-    text         = body.get('text')         ?? '';
-    speakerId    = body.get('speakerId')    ?? 's1';
-    speakerLabel = body.get('speakerLabel') ?? 'Speaker A';
-    tone         = body.get('tone')         ?? 'mid';
-    speakerColor = body.get('speakerColor') ?? '#4dabf7';
-    confidence   = parseFloat(body.get('confidence') ?? '1');
-    timestamp    = body.get('timestamp')    ?? new Date().toISOString();
+    text              = body.get('text')              ?? '';
+    speakerId         = body.get('speakerId')         ?? 's1';
+    speakerLabel      = body.get('speakerLabel')      ?? 'Speaker A';
+    tone              = body.get('tone')              ?? 'mid';
+    speakerColor      = body.get('speakerColor')      ?? '#4dabf7';
+    confidence        = parseFloat(body.get('confidence') ?? '1');
+    timestamp         = body.get('timestamp')         ?? new Date().toISOString();
+    profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
   } catch {
     return new Response('Bad request', { status: 400 });
   }
@@ -85,8 +86,9 @@ async function handleAddCard(request) {
   if (!['low', 'mid', 'high'].includes(String(tone))) tone = 'mid';
   if (isNaN(confidence) || confidence < 0 || confidence > 1) confidence = 1;
   if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
+  if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
 
-  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp });
+  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -101,7 +103,7 @@ async function handleAddCard(request) {
  * Opacity is driven by confidence so the user sees a visual "certainty" cue.
  * All user-supplied strings are HTML-escaped to prevent XSS.
  */
-function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp }) {
+function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel = 'high' }) {
   const timeLabel    = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -125,7 +127,7 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
   style="opacity:${opacity};--speaker-color:${escapeAttr(speakerColor)}"
 >
   ${displayText}
-  <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}</span>
+  <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new speaker?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
 </article>`;
 }
 
