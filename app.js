@@ -625,6 +625,7 @@ function toVtt(cards) {
   if (!cards.length) return 'WEBVTT\n\n';
 
   const sorted = [...cards].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  const base = sorted[0].startedAt || Date.parse(sorted[0].timestamp) || Date.now();
   let out = 'WEBVTT\n\n';
 
   for (let i = 0; i < sorted.length; i++) {
@@ -634,7 +635,7 @@ function toVtt(cards) {
     const end = cur.endedAt || (next ? (next.startedAt || Date.parse(next.timestamp) || (start + 3000)) : (start + 3000));
 
     out += `${i + 1}\n`;
-    out += `${formatVttTime(start)} --> ${formatVttTime(Math.max(end, start + 300))}\n`;
+    out += `${formatVttTime(start - base)} --> ${formatVttTime(Math.max(end, start + 300) - base)}\n`;
     out += `${cur.speakerLabel || 'Speaker'}: ${cur.text}\n\n`;
   }
 
