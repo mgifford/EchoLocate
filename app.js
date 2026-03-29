@@ -41,6 +41,7 @@ const State = {
   profiles:                  [], // [{id,label,color,lastSpokenAt,avgPitch,tone,el,cardsEl,count}]
   activeSpeakerId:           null,
   nextSpeakerNum:            1,
+  micDiagnostics:            null,
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
@@ -117,24 +118,42 @@ class Visualizer {
 
   _draw() {
     const analyser = this._analyser;
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteTimeDomainData(data);
+    const timeData = new Uint8Array(analyser.frequencyBinCount);
+    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteTimeDomainData(timeData);
+    analyser.getByteFrequencyData(freqData);
+
+    const active = profileById(State.activeSpeakerId);
+    const accent = active ? active.color : '#4dabf7';
 
     const ctx = this._ctx;
     const W = this._w;
     const H = this._h;
 
-    ctx.fillStyle = '#0d0d0d';
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, '#0d0d0d');
+    bg.addColorStop(1, hexToRgba(accent, 0.14));
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, W, H);
 
+    // Three lightweight band meters (low/mid/high) tinted with active speaker color.
+    const seg = Math.floor(freqData.length / 3);
+    const low = avgByte(freqData, 0, seg);
+    const mid = avgByte(freqData, seg, seg * 2);
+    const high = avgByte(freqData, seg * 2, freqData.length);
+
+    drawBandMeter(ctx, 0, W / 3, H, low, accent);
+    drawBandMeter(ctx, W / 3, W / 3, H, mid, accent);
+    drawBandMeter(ctx, (W / 3) * 2, W / 3, H, high, accent);
+
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = '#1e3a5f';
+    ctx.strokeStyle = accent;
     ctx.beginPath();
 
-    const slice = W / data.length;
+    const slice = W / timeData.length;
     let x = 0;
-    for (let i = 0; i < data.length; i++) {
-      const y = ((data[i] / 128) * H) / 2;
+    for (let i = 0; i < timeData.length; i++) {
+      const y = ((timeData[i] / 128) * H) / 2;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
       x += slice;
@@ -224,6 +243,24 @@ function updateSpeakerIndicator(profile) {
   }
   el.textContent = `Active: ${profile.label}`;
   el.style.color = profile.color;
+}
+
+function updateMicInfoText() {
+  const el = document.getElementById('mic-info');
+  if (!el) return;
+
+  if (!State.micDiagnostics) {
+    el.textContent = 'Voice split: tone profile only';
+    return;
+  }
+
+  const d = State.micDiagnostics;
+  const channels = d.channelCount || 1;
+  if (channels > 1) {
+    el.textContent = `Mic channels: ${channels} (transcript still mixed; separation is mainly tone-based)`;
+  } else {
+    el.textContent = 'Mic channels: 1 (speaker split is tone-based)';
+  }
 }
 
 function profileById(id) {
@@ -595,12 +632,22 @@ async function setupAudio() {
   if (State.audioCtx) {
     if (State.audioCtx.state === 'suspended') await State.audioCtx.resume();
     if (State.visualizer) State.visualizer.start();
+    updateMicInfoText();
     return;
   }
 
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  const track = stream.getAudioTracks()[0];
+  const settings = track && track.getSettings ? track.getSettings() : {};
   State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const source = State.audioCtx.createMediaStreamSource(stream);
+
+  State.micDiagnostics = {
+    channelCount: settings.channelCount || 1,
+    sampleRate: settings.sampleRate || State.audioCtx.sampleRate,
+    echoCancellation: settings.echoCancellation,
+  };
+  updateMicInfoText();
 
   State.analyser = State.audioCtx.createAnalyser();
   State.analyser.fftSize = 2048;
@@ -746,6 +793,7 @@ async function boot() {
   TranscriptCtrl.init();
   SpeechEngine.init();
   initControls();
+  updateMicInfoText();
 
   restoreSession().catch((err) => console.warn('[EchoLocate] Restore failed:', err));
 }
@@ -757,6 +805,33 @@ function escapeHTML(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function avgByte(arr, start, end) {
+  let total = 0;
+  let count = 0;
+  for (let i = start; i < end; i++) {
+    total += arr[i];
+    count += 1;
+  }
+  return count ? total / count : 0;
+}
+
+function drawBandMeter(ctx, x, width, h, value, color) {
+  const v = Math.max(0, Math.min(255, value));
+  const barH = (v / 255) * 18;
+  const y = h - barH - 2;
+  ctx.fillStyle = hexToRgba(color, 0.24 + (v / 255) * 0.36);
+  ctx.fillRect(x + 3, y, Math.max(0, width - 6), barH);
+}
+
+function hexToRgba(hex, alpha) {
+  const safe = String(hex || '').replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(safe)) return `rgba(77, 171, 247, ${alpha})`;
+  const r = parseInt(safe.slice(0, 2), 16);
+  const g = parseInt(safe.slice(2, 4), 16);
+  const b = parseInt(safe.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 if (document.readyState === 'loading') {

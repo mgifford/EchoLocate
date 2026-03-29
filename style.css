@@ -443,10 +443,21 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.3rem 1.5rem;
   font-size: 0.72rem;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.mic-info {
+  color: #6d6d6d;
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .autosave-note {
@@ -501,4 +512,5 @@ body {
   .btn      { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
 
   .mic-status { display: none; } /* reclaim space on small screens */
+  .mic-info   { display: none; }
 }
