@@ -304,6 +304,35 @@ body {
   letter-spacing: 0;
 }
 
+.lane-confidence {
+  margin-left: 0.55rem;
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+}
+
+.lane-confidence.conf-high {
+  color: #69db7c;
+  border-color: #2f5f39;
+  background: rgba(30, 61, 35, 0.35);
+}
+
+.lane-confidence.conf-medium {
+  color: #ffd43b;
+  border-color: #5a4a17;
+  background: rgba(92, 72, 16, 0.35);
+}
+
+.lane-confidence.conf-low {
+  color: #ff8787;
+  border-color: #693030;
+  background: rgba(80, 28, 28, 0.35);
+}
+
 .lane-cards {
   flex: 1;
   min-height: 0;
@@ -419,6 +448,50 @@ body {
 /* Slightly brighter while actively speaking */
 .interim-text.speaking { color: rgba(241, 243, 245, 0.65); }
 
+.debug-overlay {
+  position: absolute;
+  right: 1rem;
+  bottom: calc(var(--interim-h) + 0.75rem);
+  width: min(380px, calc(100% - 2rem));
+  padding: 0.6rem;
+  border: 1px solid #2d2d2d;
+  border-radius: 10px;
+  background: rgba(5, 5, 5, 0.94);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  z-index: 20;
+}
+
+.debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.7rem;
+}
+
+#debug-legend {
+  color: #8b8b8b;
+  font-size: 0.64rem;
+}
+
+#debug-canvas {
+  display: block;
+  width: 100%;
+  height: 150px;
+  border-radius: 6px;
+  background: #090909;
+  border: 1px solid #1f1f1f;
+}
+
+.debug-summary {
+  margin-top: 0.4rem;
+  font-size: 0.68rem;
+  color: #a6a6a6;
+  line-height: 1.4;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    FOOTER — waveform visualizer
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -458,6 +531,15 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.stereo-info {
+  color: #8cb5ff;
+  white-space: nowrap;
+}
+
+#btn-stereo[disabled] {
+  opacity: 0.25;
 }
 
 .autosave-note {
@@ -513,4 +595,9 @@ body {
 
   .mic-status { display: none; } /* reclaim space on small screens */
   .mic-info   { display: none; }
+  .stereo-info { display: none; }
+  .debug-overlay {
+    right: 0.5rem;
+    width: calc(100% - 1rem);
+  }
 }

@@ -17,7 +17,10 @@ const CFG = Object.freeze({
   INACTIVE_AFTER_MS:  30_000,
   MINIMIZE_SWEEP_MS:  5_000,
   VOICE_MATCH_RATIO:  0.18,
+  HIGH_CONF_RATIO:    0.06,
+  MED_CONF_RATIO:     0.12,
   MAX_SPEAKERS:       8,
+  DEBUG_POINTS_MAX:   120,
 });
 
 function apiUrl(path) {
@@ -42,6 +45,14 @@ const State = {
   activeSpeakerId:           null,
   nextSpeakerNum:            1,
   micDiagnostics:            null,
+  stereoEnabled:             false,
+  stereoAnalyserL:           null,
+  stereoAnalyserR:           null,
+  stereoSamplesL:            [],
+  stereoSamplesR:            [],
+  debugEnabled:              false,
+  debugPoints:               [],
+  mediaSource:               null,
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
@@ -184,12 +195,22 @@ function spectralCentroid() {
 function startPitchSampling() {
   if (State.sampleTimer) return;
   State.utteranceSamples = [];
+  State.stereoSamplesL = [];
+  State.stereoSamplesR = [];
   State.sampleTimer = setInterval(() => {
     const c = spectralCentroid();
     if (c > 0) {
       State.utteranceSamples.push(c);
       State.pitchHistory.push(c);
       if (State.pitchHistory.length > CFG.PITCH_WINDOW) State.pitchHistory.shift();
+    }
+
+    if (State.stereoEnabled && State.stereoAnalyserL && State.stereoAnalyserR) {
+      const left = channelEnergy(State.stereoAnalyserL);
+      const right = channelEnergy(State.stereoAnalyserR);
+      State.stereoSamplesL.push(left);
+      State.stereoSamplesR.push(right);
+      updateStereoInfoText(left, right);
     }
   }, 1000 / CFG.PITCH_HZ);
 }
@@ -263,6 +284,105 @@ function updateMicInfoText() {
   }
 }
 
+function updateStereoInfoText(left = 0, right = 0) {
+  const el = document.getElementById('stereo-info');
+  if (!el) return;
+
+  if (!State.stereoEnabled || !State.micDiagnostics || (State.micDiagnostics.channelCount || 1) < 2) {
+    el.classList.add('hidden');
+    return;
+  }
+
+  el.classList.remove('hidden');
+  const bias = left + right > 0 ? (left - right) / (left + right) : 0;
+  const side = Math.abs(bias) < 0.08 ? 'Center' : (bias > 0 ? 'Left-leaning' : 'Right-leaning');
+  el.textContent = `Stereo L:${left.toFixed(0)} R:${right.toFixed(0)} ${side}`;
+}
+
+function pushDebugPoint(point) {
+  State.debugPoints.push(point);
+  if (State.debugPoints.length > CFG.DEBUG_POINTS_MAX) {
+    State.debugPoints.shift();
+  }
+  if (State.debugEnabled) renderDebugOverlay();
+}
+
+function renderDebugOverlay() {
+  const canvas = document.getElementById('debug-canvas');
+  const summary = document.getElementById('debug-summary');
+  if (!canvas || !summary) return;
+
+  const points = State.debugPoints;
+  if (!points.length) {
+    summary.textContent = 'No pitch data yet.';
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = 12;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#090909';
+  ctx.fillRect(0, 0, W, H);
+
+  const minV = Math.min(...points.map((p) => p.centroid));
+  const maxV = Math.max(...points.map((p) => p.centroid));
+  const span = Math.max(1, maxV - minV);
+
+  ctx.strokeStyle = '#2a2a2a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, H - pad);
+  ctx.lineTo(W - pad, H - pad);
+  ctx.moveTo(pad, pad);
+  ctx.lineTo(pad, H - pad);
+  ctx.stroke();
+
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const cur = points[i];
+    const x1 = pad + ((i - 1) / Math.max(1, points.length - 1)) * (W - pad * 2);
+    const y1 = H - pad - ((prev.centroid - minV) / span) * (H - pad * 2);
+    const x2 = pad + (i / Math.max(1, points.length - 1)) * (W - pad * 2);
+    const y2 = H - pad - ((cur.centroid - minV) / span) * (H - pad * 2);
+
+    ctx.strokeStyle = cur.speakerColor || '#4dabf7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    if (cur.speakerId !== prev.speakerId) {
+      ctx.strokeStyle = '#ffd43b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x2, pad);
+      ctx.lineTo(x2, H - pad);
+      ctx.stroke();
+    }
+  }
+
+  const latest = points[points.length - 1];
+  const prev = points.length > 1 ? points[points.length - 2] : null;
+  const switched = prev && prev.speakerId !== latest.speakerId;
+  const ratioText = Number.isFinite(latest.matchRatio) ? latest.matchRatio.toFixed(3) : 'n/a';
+  summary.textContent = switched
+    ? `Switch detected. New speaker ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`
+    : `Stable speaker ${latest.speakerId.toUpperCase()} at ${latest.centroid.toFixed(1)}Hz (ratio ${ratioText}, ${latest.matchLevel}).`;
+}
+
+function updateDebugUI() {
+  const overlay = document.getElementById('debug-overlay');
+  const btn = document.getElementById('btn-debug');
+  if (!overlay || !btn) return;
+  overlay.classList.toggle('hidden', !State.debugEnabled);
+  btn.setAttribute('aria-pressed', State.debugEnabled ? 'true' : 'false');
+  if (State.debugEnabled) renderDebugOverlay();
+}
+
 function profileById(id) {
   return State.profiles.find((p) => p.id === id) || null;
 }
@@ -279,6 +399,7 @@ function buildLane(profile) {
   header.innerHTML = `
     <span class="lane-dot"></span>
     ${escapeHTML(profile.label)}
+    <span class="lane-confidence conf-medium" id="lane-${profile.id}-confidence">MED</span>
     <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
   `;
 
@@ -292,6 +413,14 @@ function buildLane(profile) {
 
   profile.el = lane;
   profile.cardsEl = cards;
+}
+
+function setLaneConfidence(profile, level) {
+  if (!profile || !profile.el) return;
+  const badge = profile.el.querySelector('.lane-confidence');
+  if (!badge) return;
+  badge.className = `lane-confidence conf-${level}`;
+  badge.textContent = level.toUpperCase();
 }
 
 function ensureLane(profile) {
@@ -346,7 +475,14 @@ function newProfile(pitch, tone) {
     el: null,
     cardsEl: null,
     count: 0,
+    matchLevel: 'medium',
   };
+}
+
+function confidenceFromRatio(ratio) {
+  if (ratio <= CFG.HIGH_CONF_RATIO) return 'high';
+  if (ratio <= CFG.MED_CONF_RATIO) return 'medium';
+  return 'low';
 }
 
 function resolveSpeakerProfile(pitch) {
@@ -355,7 +491,9 @@ function resolveSpeakerProfile(pitch) {
     const first = newProfile(pitch, tone);
     State.profiles.push(first);
     ensureLane(first);
-    return first;
+    first.matchLevel = 'medium';
+    setLaneConfidence(first, first.matchLevel);
+    return { profile: first, matchRatio: 0, confidenceLevel: first.matchLevel, createdNew: true };
   }
 
   let best = null;
@@ -371,27 +509,38 @@ function resolveSpeakerProfile(pitch) {
   if (best && (bestRatio <= CFG.VOICE_MATCH_RATIO || State.profiles.length >= CFG.MAX_SPEAKERS)) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
     best.tone = tone;
+    best.matchLevel = confidenceFromRatio(bestRatio);
     if (best.el) {
       const hint = best.el.querySelector('.lane-hint');
       if (hint) hint.textContent = laneHintFromTone(tone);
     }
-    return best;
+    setLaneConfidence(best, best.matchLevel);
+    return { profile: best, matchRatio: bestRatio, confidenceLevel: best.matchLevel, createdNew: false };
   }
 
   const next = newProfile(pitch, tone);
   State.profiles.push(next);
   ensureLane(next);
-  return next;
+  next.matchLevel = 'low';
+  setLaneConfidence(next, next.matchLevel);
+  return { profile: next, matchRatio: 1, confidenceLevel: next.matchLevel, createdNew: true };
 }
 
 function flushUtteranceMetrics() {
   const samples = State.utteranceSamples;
+  const stereoL = State.stereoSamplesL;
+  const stereoR = State.stereoSamplesR;
   stopPitchSampling();
   State.utteranceSamples = [];
+  State.stereoSamplesL = [];
+  State.stereoSamplesR = [];
 
   const centroid = samples.length ? mean(samples) : (State.pitchHistory.length ? mean(State.pitchHistory) : 200);
   const tone = classifyTone(centroid);
-  return { centroid, tone };
+  const leftEnergy = stereoL.length ? mean(stereoL) : 0;
+  const rightEnergy = stereoR.length ? mean(stereoR) : 0;
+  const balance = (leftEnergy + rightEnergy) > 0 ? (leftEnergy - rightEnergy) / (leftEnergy + rightEnergy) : 0;
+  return { centroid, tone, leftEnergy, rightEnergy, balance };
 }
 
 const Storage = {
@@ -481,8 +630,9 @@ const TranscriptCtrl = {
     const startedAt = State.currentUtteranceStartedAt || (now - 1500);
     State.currentUtteranceStartedAt = null;
 
-    const { centroid, tone } = flushUtteranceMetrics();
-    const profile = resolveSpeakerProfile(centroid);
+    const { centroid, tone, leftEnergy, rightEnergy, balance } = flushUtteranceMetrics();
+    const match = resolveSpeakerProfile(centroid);
+    const profile = match.profile;
     profile.count += 1;
 
     touchProfile(profile, now);
@@ -498,7 +648,25 @@ const TranscriptCtrl = {
       startedAt,
       endedAt: now,
       pitch: centroid,
+      profileMatchRatio: match.matchRatio,
+      profileMatchLevel: match.confidenceLevel,
+      stereoBalance: balance,
+      stereoLeftEnergy: leftEnergy,
+      stereoRightEnergy: rightEnergy,
     };
+
+    pushDebugPoint({
+      timestamp: now,
+      centroid,
+      speakerId: profile.id,
+      speakerColor: profile.color,
+      matchRatio: match.matchRatio,
+      matchLevel: match.confidenceLevel,
+      createdNew: match.createdNew,
+      leftEnergy,
+      rightEnergy,
+      balance,
+    });
 
     this.clearInterim();
 
@@ -641,6 +809,7 @@ async function setupAudio() {
   const settings = track && track.getSettings ? track.getSettings() : {};
   State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const source = State.audioCtx.createMediaStreamSource(stream);
+  State.mediaSource = source;
 
   State.micDiagnostics = {
     channelCount: settings.channelCount || 1,
@@ -653,6 +822,19 @@ async function setupAudio() {
   State.analyser.fftSize = 2048;
   State.analyser.smoothingTimeConstant = 0.8;
   source.connect(State.analyser);
+
+  if ((State.micDiagnostics.channelCount || 1) > 1) {
+    const splitter = State.audioCtx.createChannelSplitter(2);
+    source.connect(splitter);
+    State.stereoAnalyserL = State.audioCtx.createAnalyser();
+    State.stereoAnalyserR = State.audioCtx.createAnalyser();
+    State.stereoAnalyserL.fftSize = 1024;
+    State.stereoAnalyserR.fftSize = 1024;
+    splitter.connect(State.stereoAnalyserL, 0);
+    splitter.connect(State.stereoAnalyserR, 1);
+  }
+
+  refreshStereoControlState();
 
   const canvas = document.getElementById('visualizer');
   State.visualizer = new Visualizer(canvas, State.analyser);
@@ -718,11 +900,13 @@ async function restoreSession() {
         el: null,
         cardsEl: null,
         count: 0,
+        matchLevel: card.profileMatchLevel || 'medium',
       };
       State.profiles.push(profile);
       const num = parseInt(String(profile.id).replace('s', ''), 10);
       if (!isNaN(num)) State.nextSpeakerNum = Math.max(State.nextSpeakerNum, num + 1);
       ensureLane(profile);
+      setLaneConfidence(profile, profile.matchLevel);
     }
 
     profile.count += 1;
@@ -739,6 +923,11 @@ async function restoreSession() {
       startedAt: card.startedAt || Date.now(),
       endedAt: card.endedAt || Date.now(),
       pitch: card.pitch || profile.avgPitch,
+      profileMatchRatio: card.profileMatchRatio ?? 0,
+      profileMatchLevel: card.profileMatchLevel || profile.matchLevel || 'medium',
+      stereoBalance: card.stereoBalance ?? 0,
+      stereoLeftEnergy: card.stereoLeftEnergy ?? 0,
+      stereoRightEnergy: card.stereoRightEnergy ?? 0,
     };
 
     await postCard(normalized);
@@ -753,6 +942,8 @@ function initControls() {
   const btnStop = document.getElementById('btn-stop');
   const btnClear = document.getElementById('btn-clear');
   const btnExport = document.getElementById('btn-export');
+  const btnDebug = document.getElementById('btn-debug');
+  const btnStereo = document.getElementById('btn-stereo');
 
   btnStart.addEventListener('click', async () => {
     btnStart.disabled = true;
@@ -774,6 +965,9 @@ function initControls() {
     State.profiles = [];
     State.activeSpeakerId = null;
     State.nextSpeakerNum = 1;
+    State.debugPoints = [];
+    updateStereoInfoText();
+    renderDebugOverlay();
     updateCardCount();
   });
 
@@ -782,6 +976,19 @@ function initControls() {
     const vtt = toVtt(cards);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     downloadTextFile(`echolocate-${stamp}.vtt`, vtt, 'text/vtt;charset=utf-8');
+  });
+
+  btnDebug.addEventListener('click', () => {
+    State.debugEnabled = !State.debugEnabled;
+    updateDebugUI();
+  });
+
+  btnStereo.addEventListener('click', () => {
+    if (btnStereo.disabled) return;
+    State.stereoEnabled = !State.stereoEnabled;
+    btnStereo.setAttribute('aria-pressed', State.stereoEnabled ? 'true' : 'false');
+    btnStereo.textContent = State.stereoEnabled ? 'Stereo On' : 'Stereo';
+    updateStereoInfoText();
   });
 }
 
@@ -794,6 +1001,8 @@ async function boot() {
   SpeechEngine.init();
   initControls();
   updateMicInfoText();
+  updateDebugUI();
+  renderDebugOverlay();
 
   restoreSession().catch((err) => console.warn('[EchoLocate] Restore failed:', err));
 }
@@ -815,6 +1024,30 @@ function avgByte(arr, start, end) {
     count += 1;
   }
   return count ? total / count : 0;
+}
+
+function channelEnergy(analyser) {
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteTimeDomainData(data);
+  let sumSquares = 0;
+  for (let i = 0; i < data.length; i++) {
+    const centered = (data[i] - 128) / 128;
+    sumSquares += centered * centered;
+  }
+  return Math.sqrt(sumSquares / data.length) * 100;
+}
+
+function refreshStereoControlState() {
+  const btn = document.getElementById('btn-stereo');
+  if (!btn) return;
+  const available = !!State.micDiagnostics && (State.micDiagnostics.channelCount || 1) > 1;
+  btn.disabled = !available;
+  if (!available) {
+    State.stereoEnabled = false;
+    btn.setAttribute('aria-pressed', 'false');
+    btn.textContent = 'Stereo';
+    updateStereoInfoText();
+  }
 }
 
 function drawBandMeter(ctx, x, width, h, value, color) {

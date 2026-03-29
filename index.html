@@ -42,8 +42,26 @@
         <button id="btn-start" class="btn btn-primary"   aria-label="Start transcription">Start</button>
         <button id="btn-stop"  class="btn btn-secondary" aria-label="Stop transcription"  disabled>Stop</button>
         <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
+        <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
+        <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
         <button id="btn-clear" class="btn btn-danger"    aria-label="Clear all cards">Clear</button>
       </div>
+
+      <button id="theme-toggle"
+              class="theme-toggle"
+              type="button"
+              aria-label="Switch to dark mode"
+              aria-pressed="false"
+              title="Toggle light and dark theme">
+        <svg aria-hidden="true" class="theme-icon sun-icon" viewBox="0 0 24 24" width="20" height="20">
+          <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.8"></circle>
+          <path d="M12 1.8v3.2M12 19v3.2M1.8 12h3.2M19 12h3.2M4.5 4.5l2.3 2.3M17.2 17.2l2.3 2.3M19.5 4.5l-2.3 2.3M6.8 17.2l-2.3 2.3"
+                stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+        </svg>
+        <svg aria-hidden="true" class="theme-icon moon-icon" viewBox="0 0 24 24" width="20" height="20">
+          <path fill="currentColor" d="M21 14.2A9 9 0 1 1 9.8 3a7.1 7.1 0 1 0 11.2 11.2z"></path>
+        </svg>
+      </button>
 
     </div>
   </header>
@@ -69,6 +87,15 @@
       <span id="live-transcript" class="interim-text"></span>
     </div>
 
+    <aside id="debug-overlay" class="debug-overlay hidden" aria-live="polite" aria-label="Pitch centroid debug overlay">
+      <div class="debug-head">
+        <strong>Pitch Debug</strong>
+        <span id="debug-legend">Centroid history and speaker switches</span>
+      </div>
+      <canvas id="debug-canvas" width="360" height="150" aria-hidden="true"></canvas>
+      <div id="debug-summary" class="debug-summary">No pitch data yet.</div>
+    </aside>
+
   </main>
 
   <footer class="app-footer" role="contentinfo">
@@ -81,6 +108,7 @@
       <span id="card-count">0 cards</span>
       <span id="speaker-indicator"></span>
       <span id="mic-info" class="mic-info">Voice split: tone profile only</span>
+      <span id="stereo-info" class="stereo-info hidden">Stereo experiment off</span>
       <span class="autosave-note">Auto-saved ✓</span>
     </div>
   </footer>
