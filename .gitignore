@@ -1,0 +1,31 @@
+# macOS / Windows noise
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python cache / virtualenv
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local environment files
+.env
+.env.*
+
+# Runtime logs
+*.log
+
+# Optional downloaded ML model assets (keep placeholder files tracked)
+models/*
+!models/.gitkeep
+!models/README.md
+
+# Keep vendored runtime dependencies in git (do not ignore vendor/)
+# vendor/
