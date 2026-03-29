@@ -74,19 +74,16 @@
 
         <label class="lang-picker-label" for="lang-select">Language</label>
         <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
-        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="en-US" aria-label="Quick switch to English">English</button>
-        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="es-ES" aria-label="Quick switch to Spanish">Spanish</button>
-        <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="fr-FR" aria-label="Quick switch to French">French</button>
 
         <!-- Theme toggle — last in tab order per a11y guidance -->
           <!-- View toggle — switch between multi-lane and single chat feed -->
           <button id="btn-view-toggle"
             class="btn btn-secondary btn-view-toggle"
             type="button"
-            aria-label="Switch to chat view"
-            title="Switch to chat view"
+            aria-label="Switch transcript layout"
+            title="Switch transcript layout"
             aria-pressed="false">
-            Chat
+            View: Chat
           </button>
 
           <!-- Theme toggle — last in tab order per a11y guidance -->
@@ -147,6 +144,7 @@
          aria-label="Speech currently in progress">
       <span class="interim-label" aria-hidden="true">Live</span>
       <span id="live-transcript" class="interim-text"></span>
+      <span id="lang-mismatch-hint" class="lang-mismatch-hint hidden"></span>
     </div>
 
     <aside id="debug-overlay" class="debug-overlay hidden" aria-live="polite" aria-label="Pitch centroid debug overlay">
@@ -172,6 +170,11 @@
       <span id="mic-info" class="mic-info">Voice split: tone profile only</span>
       <span id="stereo-info" class="stereo-info hidden">Stereo experiment off</span>
       <span class="autosave-note">Auto-saved ✓</span>
+    </div>
+
+    <div class="footer-community" role="note" aria-live="polite">
+      <span>Help shape EchoLocate for deaf and hard-of-hearing users:</span>
+      <a href="https://github.com/mgifford/EchoLocate" target="_blank" rel="noopener noreferrer">Join the project on GitHub</a>
     </div>
   </footer>
 

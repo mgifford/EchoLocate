@@ -35,9 +35,10 @@ const API = Object.freeze({
   ADD_CHAT_MSG: apiUrl('add-chat-msg'),
 });
 
-const DEFAULT_RECOGNITION_LANG = 'en-US';
+const DEFAULT_RECOGNITION_LANG = '';
 
 const LANGUAGE_OPTIONS = [
+  { code: '', label: 'None (Auto)', flag: '🌐' },
   { code: 'en-US', label: 'English (US)', flag: '🇺🇸' },
   { code: 'en-GB', label: 'English (UK)', flag: '🇬🇧' },
   { code: 'es-ES', label: 'Spanish (Spain)', flag: '🇪🇸' },
@@ -88,9 +89,11 @@ const State = {
   pitchHistory:              [],
   utteranceSamples:          [],
   currentUtteranceStartedAt: null,
-  recognitionLang:           localStorage.getItem('echolocate-rec-lang') || DEFAULT_RECOGNITION_LANG,
+  recognitionLang:           localStorage.getItem('echolocate-rec-lang') ?? DEFAULT_RECOGNITION_LANG,
   languageDetector:          null,
   supportedLanguages:        [],
+  lastResultAt:              0,
+  languageHintTimer:         null,
   audioCtx:                  null,
   analyser:                  null,
   meydaAnalyzer:             null,
@@ -476,7 +479,38 @@ function updateStereoInfoText(left = 0, right = 0) {
   el.textContent = `Stereo L:${left.toFixed(0)} R:${right.toFixed(0)} ${side}`;
 }
 
+function showLanguageHint(message) {
+  const el = document.getElementById('lang-mismatch-hint');
+  if (!el) return;
+  if (!message) {
+    el.textContent = '';
+    el.classList.add('hidden');
+    return;
+  }
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+function selectedLanguageLabel() {
+  const meta = languageMeta(State.recognitionLang);
+  return meta ? meta.label : (State.recognitionLang || 'None (Auto)');
+}
+
+function showDetectedLanguageFeedback(detectedTag) {
+  if (!detectedTag) return;
+  if (!State.recognitionLang) {
+    showLanguageHint(`Detected ${detectedTag} while in Auto mode.`);
+    return;
+  }
+  if (detectedTag !== State.recognitionLang) {
+    showLanguageHint(`Detected ${detectedTag} but selected ${selectedLanguageLabel()}. Try None (Auto) or switch language.`);
+  } else {
+    showLanguageHint('');
+  }
+}
+
 function languageMeta(tag) {
+  if (tag === '') return LANGUAGE_OPTIONS.find((l) => l.code === '') || null;
   if (!tag) return null;
   const base = tag.toLowerCase();
   return LANGUAGE_OPTIONS.find((l) => l.code.toLowerCase() === base)
@@ -489,11 +523,15 @@ function languageFlag(tag) {
   return meta ? meta.flag : '🌐';
 }
 
+function languageBadgeText(tag) {
+  return tag || 'Auto';
+}
+
 function updateLaneLanguage(profile, tag, shifted = false) {
   if (!profile || !profile.el || !tag) return;
   const badge = profile.el.querySelector(`#lane-${profile.id}-lang`);
   if (!badge) return;
-  badge.textContent = `${languageFlag(tag)} ${tag}`;
+  badge.textContent = `${languageFlag(tag)} ${languageBadgeText(tag)}`;
   badge.classList.toggle('shifted', !!shifted);
 }
 
@@ -514,10 +552,10 @@ async function getSpeechLanguageCodes() {
   }
 
   try {
-    const requested = LANGUAGE_OPTIONS.map((l) => l.code);
+    const requested = LANGUAGE_OPTIONS.map((l) => l.code).filter(Boolean);
     const available = await SR.available(requested);
     const normalized = normalizeSupportedLangs(available);
-    return normalized.length ? normalized : requested;
+    return normalized.length ? ['', ...normalized] : LANGUAGE_OPTIONS.map((l) => l.code);
   } catch {
     return LANGUAGE_OPTIONS.map((l) => l.code);
   }
@@ -529,7 +567,11 @@ async function initLanguageSelector() {
 
   const codes = await getSpeechLanguageCodes();
   const mapped = codes.map((code) => languageMeta(code) || { code, label: code, flag: '🌐' });
-  mapped.sort((a, b) => a.label.localeCompare(b.label));
+  mapped.sort((a, b) => {
+    if (a.code === '') return -1;
+    if (b.code === '') return 1;
+    return a.label.localeCompare(b.label);
+  });
   State.supportedLanguages = mapped;
 
   select.innerHTML = '';
@@ -592,7 +634,7 @@ function detectLanguageTag(text) {
 }
 
 function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
-  if (!lang) return;
+  if (lang == null) return;
   State.recognitionLang = lang;
   localStorage.setItem('echolocate-rec-lang', lang);
 
@@ -600,9 +642,10 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
   if (select && select.value !== lang) select.value = lang;
 
   if (SpeechEngine._rec) {
-    SpeechEngine._rec.lang = lang;
+    SpeechEngine._rec.lang = lang || '';
     if (opts.fromUser && State.isRunning) {
-      setStatus('restarting', `Switching language to ${lang}...`);
+      const label = languageMeta(lang)?.label || lang || 'None (Auto)';
+      setStatus('restarting', `Switching language to ${label}...`);
       try {
         SpeechEngine._rec.stop();
       } catch {
@@ -610,6 +653,50 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
       }
     }
   }
+}
+
+function applyView(view) {
+  const normalized = view === 'chat' ? 'chat' : 'lanes';
+  document.body.classList.toggle('view-chat', normalized === 'chat');
+  document.body.classList.toggle('view-lanes', normalized !== 'chat');
+  localStorage.setItem('echolocate-view', normalized);
+
+  const btn = document.getElementById('btn-view-toggle');
+  if (!btn) return;
+  const inChat = normalized === 'chat';
+  btn.textContent = inChat ? 'Layout: Chat' : 'Layout: Lanes';
+  btn.setAttribute('aria-pressed', inChat ? 'true' : 'false');
+  btn.setAttribute('aria-label', inChat ? 'Switch layout (currently chat)' : 'Switch layout (currently lanes)');
+  btn.title = 'Switch between chat and lanes layouts';
+}
+
+function initViewToggle() {
+  const saved = localStorage.getItem('echolocate-view');
+  const mobileDefault = window.matchMedia('(max-width: 700px)').matches ? 'chat' : 'lanes';
+  applyView(saved || mobileDefault);
+
+  const btn = document.getElementById('btn-view-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const next = document.body.classList.contains('view-chat') ? 'lanes' : 'chat';
+    applyView(next);
+  });
+}
+
+function startLanguageHintTimer() {
+  clearInterval(State.languageHintTimer);
+  State.lastResultAt = Date.now();
+  State.languageHintTimer = setInterval(() => {
+    if (!State.isRunning) return;
+    if (!State.recognitionLang) return;
+    if (Date.now() - State.lastResultAt < 9000) return;
+    showLanguageHint(`No transcript yet. Selected ${selectedLanguageLabel()}. Try None (Auto) or switch language.`);
+  }, 4000);
+}
+
+function stopLanguageHintTimer() {
+  clearInterval(State.languageHintTimer);
+  State.languageHintTimer = null;
 }
 
 function pushDebugPoint(point) {
@@ -712,7 +799,7 @@ function buildLane(profile) {
   header.innerHTML = `
     <span class="lane-dot"></span>
     ${escapeHTML(profile.label)}
-    <span class="lane-language" id="lane-${profile.id}-lang">${languageFlag(State.recognitionLang)} ${escapeHTML(State.recognitionLang)}</span>
+    <span class="lane-language" id="lane-${profile.id}-lang">${languageFlag(State.recognitionLang)} ${escapeHTML(languageBadgeText(State.recognitionLang))}</span>
     <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
   `;
 
@@ -993,10 +1080,12 @@ const TranscriptCtrl = {
     const profile = match.profile;
     profile.count += 1;
 
-    const detectedLang = detectLanguageTag(text) || State.recognitionLang;
-    const shiftedLang = !!profile.languageTag && profile.languageTag !== detectedLang;
-    profile.languageTag = detectedLang;
-    updateLaneLanguage(profile, detectedLang, shiftedLang);
+    const detectedLang = detectLanguageTag(text);
+    const laneLang = detectedLang || State.recognitionLang || '';
+    const shiftedLang = !!profile.languageTag && !!laneLang && profile.languageTag !== laneLang;
+    profile.languageTag = laneLang;
+    if (laneLang) updateLaneLanguage(profile, laneLang, shiftedLang);
+    showDetectedLanguageFeedback(detectedLang);
 
     touchProfile(profile, now);
 
@@ -1062,6 +1151,8 @@ const SpeechEngine = {
       State.profilingStartedAt = Date.now();
       updateProfilingStatus();
       startPitchSampling();
+      startLanguageHintTimer();
+      showLanguageHint('');
       if (State.meydaAnalyzer) {
         try {
           State.meydaAnalyzer.start();
@@ -1074,6 +1165,7 @@ const SpeechEngine = {
 
     rec.onresult = (event) => {
       this._resetWatchdog();
+      State.lastResultAt = Date.now();
       let interim = '';
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1085,6 +1177,7 @@ const SpeechEngine = {
           TranscriptCtrl.commitCard(transcript, confidence);
         } else if (transcript) {
           interim += transcript + ' ';
+          showDetectedLanguageFeedback(detectLanguageTag(transcript));
         }
       }
 
@@ -1110,6 +1203,8 @@ const SpeechEngine = {
         }, CFG.RESTART_DELAY);
       } else {
         setStatus('idle', 'Ready');
+        stopLanguageHintTimer();
+        showLanguageHint('');
         if (State.visualizer) State.visualizer.stop();
         stopPitchSampling();
         if (State.meydaAnalyzer) {
@@ -1168,6 +1263,8 @@ const SpeechEngine = {
 
   stop() {
     State.isRunning = false;
+    stopLanguageHintTimer();
+    showLanguageHint('');
     clearTimeout(this._watchdogTimer);
     stopPitchSampling();
     State.latestSignatureFrame = null;
@@ -1419,15 +1516,9 @@ function initControls() {
   if (langSelect) {
     langSelect.addEventListener('change', () => {
       applyRecognitionLanguage(langSelect.value, { fromUser: true });
+      showLanguageHint('');
     });
   }
-
-  document.querySelectorAll('.btn-quick-lang').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const lang = btn.getAttribute('data-lang');
-      applyRecognitionLanguage(lang, { fromUser: true });
-    });
-  });
 
   const btnTheme = document.getElementById('theme-toggle');
   if (btnTheme) {
@@ -1460,6 +1551,7 @@ async function boot() {
 
   await initLanguageSelector();
   await initLanguageDetection();
+  initViewToggle();
 
   await registerServiceWorker();
   TranscriptCtrl.init();
