@@ -65,23 +65,28 @@ self.addEventListener('fetch', (event) => {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleAddCard(request) {
-  let text, speaker, confidence, timestamp;
+  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp;
 
   try {
     const body = await request.formData();
-    text       = body.get('text')       ?? '';
-    speaker    = body.get('speaker')    ?? 'a';
-    confidence = parseFloat(body.get('confidence') ?? '1');
-    timestamp  = body.get('timestamp')  ?? new Date().toISOString();
+    text         = body.get('text')         ?? '';
+    speakerId    = body.get('speakerId')    ?? 's1';
+    speakerLabel = body.get('speakerLabel') ?? 'Speaker A';
+    tone         = body.get('tone')         ?? 'mid';
+    speakerColor = body.get('speakerColor') ?? '#4dabf7';
+    confidence   = parseFloat(body.get('confidence') ?? '1');
+    timestamp    = body.get('timestamp')    ?? new Date().toISOString();
   } catch {
     return new Response('Bad request', { status: 400 });
   }
 
   // Sanitise inputs before embedding in HTML
-  if (!['a', 'b'].includes(speaker)) speaker = 'a';
+  if (!/^s\d+$/.test(String(speakerId))) speakerId = 's1';
+  if (!['low', 'mid', 'high'].includes(String(tone))) tone = 'mid';
   if (isNaN(confidence) || confidence < 0 || confidence > 1) confidence = 1;
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
 
-  const html = buildCardHTML({ text, speaker, confidence, timestamp });
+  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -96,8 +101,7 @@ async function handleAddCard(request) {
  * Opacity is driven by confidence so the user sees a visual "certainty" cue.
  * All user-supplied strings are HTML-escaped to prevent XSS.
  */
-function buildCardHTML({ text, speaker, confidence, timestamp }) {
-  const speakerLabel = speaker === 'a' ? 'Speaker A' : 'Speaker B';
+function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp }) {
   const timeLabel    = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -114,10 +118,11 @@ function buildCardHTML({ text, speaker, confidence, timestamp }) {
   const opacity = Math.max(0.6, confidence).toFixed(2);
 
   return `<article
-  class="card card-${escapeAttr(speaker)}"
+  class="card card-tone-${escapeAttr(tone)}"
   role="article"
   aria-label="${escapeAttr(speakerLabel)} at ${escapeAttr(timeLabel)}"
-  style="opacity:${opacity}"
+  data-speaker-id="${escapeAttr(speakerId)}"
+  style="opacity:${opacity};--speaker-color:${escapeAttr(speakerColor)}"
 >
   ${displayText}
   <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}</span>

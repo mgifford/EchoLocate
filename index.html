@@ -41,6 +41,7 @@
         </div>
         <button id="btn-start" class="btn btn-primary"   aria-label="Start transcription">Start</button>
         <button id="btn-stop"  class="btn btn-secondary" aria-label="Stop transcription"  disabled>Stop</button>
+        <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
         <button id="btn-clear" class="btn btn-danger"    aria-label="Clear all cards">Clear</button>
       </div>
 
@@ -50,35 +51,13 @@
   <main class="app-main" id="app-main">
 
     <!--
-      The two "Lanes" — Speaker A (low pitch, left) · Speaker B (high pitch, right).
+      Dynamic speaker lanes. New lanes are created on demand (Speaker A/B/C/...).
       role="log" tells screen readers to announce new child content as it arrives.
     -->
     <div class="lanes-grid" id="lanes-container"
          role="log"
-         aria-label="Live transcript — two speaker lanes"
-         aria-relevant="additions">
-
-      <section class="lane lane-a" aria-label="Speaker A lane — low pitch voice">
-        <header class="lane-header" aria-hidden="true">
-          <span class="lane-dot dot-a"></span>
-          Speaker A
-          <span class="lane-hint">Low pitch</span>
-        </header>
-        <div class="lane-cards" id="lane-a-cards"></div>
-      </section>
-
-      <div class="lane-sep" role="separator" aria-hidden="true"></div>
-
-      <section class="lane lane-b" aria-label="Speaker B lane — high pitch voice">
-        <header class="lane-header" aria-hidden="true">
-          <span class="lane-dot dot-b"></span>
-          Speaker B
-          <span class="lane-hint">High pitch</span>
-        </header>
-        <div class="lane-cards" id="lane-b-cards"></div>
-      </section>
-
-    </div>
+         aria-label="Live transcript — dynamic speaker lanes"
+         aria-relevant="additions"></div>
 
     <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->
     <div class="interim-strip"

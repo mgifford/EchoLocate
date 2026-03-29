@@ -58,6 +58,7 @@ body {
   overflow: hidden;
   /* Prevent iOS font-size inflation */
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* ── Utility ────────────────────────────────────────────────────────────────── */
@@ -238,7 +239,9 @@ body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1px 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem;
   overflow: hidden;
 }
 
@@ -251,7 +254,24 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 1rem 1.25rem 0.5rem;
+  padding: 1rem 1rem 0.5rem;
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  background: #050505;
+  transition: border-color var(--ease), opacity var(--ease), transform var(--ease);
+}
+
+.lane.active {
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.lane.minimized {
+  opacity: 0.55;
+}
+
+.lane.minimized .lane-cards {
+  display: none;
 }
 
 .lane-header {
@@ -268,20 +288,18 @@ body {
 }
 
 .lane-dot {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
+  background: var(--speaker-color, #4dabf7);
   flex-shrink: 0;
 }
-
-.dot-a { background: var(--accent-a); }
-.dot-b { background: var(--accent-b); }
 
 .lane-hint {
   margin-left: auto;
   font-size: 0.65rem;
   font-weight: 400;
-  color: #2c2c2c;
+  color: #626262;
   text-transform: none;
   letter-spacing: 0;
 }
@@ -325,15 +343,21 @@ body {
   to   { opacity: 1; transform: translateY(0);   }
 }
 
-.card-a {
-  background: var(--bg-card-a);
-  border-left: 3px solid var(--accent-a);
+.card-tone-low {
+  background: #071524;
+  border-left: 3px solid var(--speaker-color, var(--accent-a));
   color: var(--text-primary);
 }
 
-.card-b {
-  background: var(--bg-card-b);
-  border-left: 3px solid var(--accent-b);
+.card-tone-mid {
+  background: #1a1407;
+  border-left: 3px solid var(--speaker-color, #f59f00);
+  color: var(--text-primary);
+}
+
+.card-tone-high {
+  background: #160826;
+  border-left: 3px solid var(--speaker-color, var(--accent-b));
   color: var(--text-primary);
 }
 
@@ -465,13 +489,8 @@ body {
 @media (max-width: 700px) {
   .lanes-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 1px 1fr;
-  }
-
-  .lane-sep {
-    height: 1px;
-    width: 100%;
-    align-self: auto;
+    gap: 0.5rem;
+    padding: 0.5rem;
   }
 
   .card { font-size: 1.25rem; }
