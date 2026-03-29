@@ -14,6 +14,22 @@
 
 const CACHE_NAME = 'echolocate-v1';
 
+// ── Sea creature avatars (indexed by speaker number − 1, wraps at 6) ─────────
+const CREATURE_SVGS = [
+  // 0: Starfish
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M16 3 L19.1 11.5 L28.4 12 L21.2 17.7 L23.6 26.5 L16 21.5 L8.4 26.5 L10.8 17.7 L3.6 12 L12.9 11.5Z"/></svg>',
+  // 1: Shark
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 22 Q7 13 14 15 L15 6 L18 15 Q25 13 30 22Z"/><circle cx="9" cy="19" r="1.5" fill="rgba(0,0,0,0.35)"/></svg>',
+  // 2: Jellyfish
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M6 16 Q6 5 16 5 Q26 5 26 16Z"/><path d="M9 16 Q8 22 9 28M13 16 Q12 24 13 30M19 16 Q20 24 19 30M23 16 Q24 22 23 28" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+  // 3: Octopus
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="16" cy="13" r="8"/><path d="M9 19 Q7 24 8 29M13 21 Q12 26 12 31M19 21 Q20 26 20 31M23 19 Q25 24 24 29" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="13" cy="11" r="1.5" fill="rgba(0,0,0,0.3)"/><circle cx="19" cy="11" r="1.5" fill="rgba(0,0,0,0.3)"/></svg>',
+  // 4: Whale
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M3 19 Q3 12 12 12 Q22 12 27 17 L30 11 L30 18 Q28 21 23 22 Q16 25 9 23 Q4 22 3 19Z"/><circle cx="10" cy="17" r="1.5" fill="rgba(0,0,0,0.3)"/></svg>',
+  // 5: Crab
+  '<svg viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><ellipse cx="16" cy="17" rx="7" ry="5"/><path d="M9 15 Q5 12 3 9 Q6 8 8 12M23 15 Q27 12 29 9 Q26 8 24 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M11 21 Q9 26 9 29M14 22 Q13 27 13 29M18 22 Q19 27 19 29M21 21 Q23 26 23 29" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="13" cy="15" r="1" fill="rgba(0,0,0,0.3)"/><circle cx="19" cy="15" r="1" fill="rgba(0,0,0,0.3)"/></svg>',
+];
+
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 self.addEventListener('install', () => {
@@ -40,6 +56,12 @@ self.addEventListener('fetch', (event) => {
   // Route: clear (app.js clears the DOM directly; this just returns 200)
   if (url.pathname.endsWith('/api/clear') && event.request.method === 'POST') {
     event.respondWith(new Response('', { status: 200 }));
+    return;
+  }
+
+  // Route: add a chat message (unified chat view)
+  if (url.pathname.endsWith('/api/add-chat-msg') && event.request.method === 'POST') {
+    event.respondWith(handleAddChatMsg(event.request));
     return;
   }
 
@@ -144,3 +166,83 @@ function escapeHTML(str) {
 
 // Attribute-safe: same escaping is sufficient for quoted HTML attributes
 const escapeAttr = escapeHTML;
+
+// ── Chat route handler ────────────────────────────────────────────────────────
+
+async function handleAddChatMsg(request) {
+  let text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel;
+  try {
+    const body = await request.formData();
+    text              = body.get('text')              ?? '';
+    speakerId         = body.get('speakerId')         ?? 's1';
+    speakerLabel      = body.get('speakerLabel')      ?? 'Speaker A';
+    speakerColor      = body.get('speakerColor')      ?? '#4dabf7';
+    confidence        = parseFloat(body.get('confidence') ?? '1');
+    timestamp         = body.get('timestamp')         ?? new Date().toISOString();
+    profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
+  } catch {
+    return new Response('Bad request', { status: 400 });
+  }
+
+  if (!/^s\d+$/.test(String(speakerId))) speakerId = 's1';
+  if (isNaN(confidence) || confidence < 0 || confidence > 1) confidence = 1;
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
+  if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
+
+  const creatureIndex = Math.max(0, (parseInt(String(speakerId).replace('s', ''), 10) || 1) - 1) % CREATURE_SVGS.length;
+  const html = buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex });
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+
+// ── Chat HTML builder ─────────────────────────────────────────────────────────
+
+function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex }) {
+  const timeLabel = new Date(timestamp).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+
+  const safeText = escapeHTML(text);
+  const displayText = confidence < 0.7
+    ? `<span class="low-confidence" title="Low confidence (${Math.round(confidence * 100)}%)">${safeText}</span>`
+    : safeText;
+
+  const svg = CREATURE_SVGS[creatureIndex] || CREATURE_SVGS[0];
+
+  // Tint the bubble background from the hex speaker colour
+  const { r, g, b } = hexToRgb(speakerColor);
+  const bgColor    = `rgba(${r},${g},${b},0.13)`;
+  const bordColor  = `rgba(${r},${g},${b},0.28)`;
+
+  const matchNote = profileMatchLevel === 'low'
+    ? ' · new voice?'
+    : profileMatchLevel === 'medium' ? ' · match uncertain' : '';
+
+  return `<div
+  class="chat-msg"
+  role="article"
+  aria-label="${escapeAttr(speakerLabel)} at ${escapeAttr(timeLabel)}"
+  data-speaker-id="${escapeAttr(speakerId)}"
+  style="--speaker-color:${escapeAttr(speakerColor)}">
+  <div class="chat-avatar" aria-hidden="true">${svg}</div>
+  <div class="chat-content">
+    <span class="chat-speaker">${escapeHTML(speakerLabel)}</span>
+    <div class="chat-bubble" style="background:${bgColor};border:1px solid ${bordColor}">${displayText}</div>
+    <span class="chat-time">${escapeHTML(timeLabel)}${escapeHTML(matchNote)}</span>
+  </div>
+</div>`;
+}
+
+// ── Colour helpers ────────────────────────────────────────────────────────────
+
+function hexToRgb(hex) {
+  const h = String(hex).replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return { r: 77, g: 171, b: 247 };
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}

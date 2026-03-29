@@ -31,7 +31,8 @@ function apiUrl(path) {
 }
 
 const API = Object.freeze({
-  ADD_CARD: apiUrl('add-card'),
+  ADD_CARD:     apiUrl('add-card'),
+  ADD_CHAT_MSG: apiUrl('add-chat-msg'),
 });
 
 const DEFAULT_RECOGNITION_LANG = 'en-US';
@@ -418,6 +419,13 @@ function updateCardCount() {
   const total = document.querySelectorAll('.card').length;
   const el = document.getElementById('card-count');
   if (el) el.textContent = `${total} card${total !== 1 ? 's' : ''}`;
+}
+
+function updateEmptyStage() {
+  const panel = document.getElementById('empty-stage');
+  if (!panel) return;
+  const count = Storage.allCards().length;
+  panel.classList.toggle('hidden', count > 0);
 }
 
 function updateSpeakerIndicator(profile) {
@@ -935,6 +943,26 @@ async function postCard(cardData) {
   }
 }
 
+async function postChatMsg(cardData) {
+  if (!window.htmx) return;
+  const feed = document.getElementById('chat-feed');
+  if (!feed) return;
+  await htmx.ajax('POST', API.ADD_CHAT_MSG, {
+    target: '#chat-feed',
+    swap: 'beforeend',
+    values: {
+      text:              cardData.text,
+      speakerId:         cardData.speakerId,
+      speakerLabel:      cardData.speakerLabel,
+      speakerColor:      cardData.speakerColor,
+      confidence:        String(cardData.confidence),
+      timestamp:         cardData.timestamp,
+      profileMatchLevel: cardData.profileMatchLevel || 'high',
+    },
+  });
+  feed.scrollTop = feed.scrollHeight;
+}
+
 const TranscriptCtrl = {
   _liveEl: null,
 
@@ -1008,8 +1036,10 @@ const TranscriptCtrl = {
     this.clearInterim();
 
     await postCard(cardData);
+    await postChatMsg(cardData);
     Storage.save(cardData);
     updateCardCount();
+    updateEmptyStage();
 
     startPitchSampling();
   },
@@ -1267,7 +1297,10 @@ function downloadTextFile(filename, content, type) {
 
 async function restoreSession() {
   const cards = Storage.allCards();
-  if (!cards.length) return;
+  if (!cards.length) {
+    updateEmptyStage();
+    return;
+  }
 
   for (const card of cards) {
     let profile = profileById(card.speakerId);
@@ -1315,9 +1348,11 @@ async function restoreSession() {
     };
 
     await postCard(normalized);
+    await postChatMsg(normalized);
   }
 
   updateCardCount();
+  updateEmptyStage();
 }
 
 function initControls() {
@@ -1346,6 +1381,8 @@ function initControls() {
     if (!confirmed) return;
 
     document.getElementById('lanes-container').innerHTML = '';
+    const chatFeed = document.getElementById('chat-feed');
+    if (chatFeed) chatFeed.innerHTML = '';
     document.getElementById('speaker-indicator').textContent = '';
     TranscriptCtrl.clearInterim();
     Storage.clear();
@@ -1356,6 +1393,7 @@ function initControls() {
     updateStereoInfoText();
     renderDebugOverlay();
     updateCardCount();
+    updateEmptyStage();
   });
 
   btnExport.addEventListener('click', () => {
@@ -1430,6 +1468,7 @@ async function boot() {
   updateMicInfoText();
   updateDebugUI();
   renderDebugOverlay();
+  updateEmptyStage();
 
   restoreSession().catch((err) => console.warn('[EchoLocate] Restore failed:', err));
 }

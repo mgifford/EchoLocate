@@ -79,6 +79,17 @@
         <button class="btn btn-secondary btn-quick-lang" type="button" data-lang="fr-FR" aria-label="Quick switch to French">French</button>
 
         <!-- Theme toggle — last in tab order per a11y guidance -->
+          <!-- View toggle — switch between multi-lane and single chat feed -->
+          <button id="btn-view-toggle"
+            class="btn btn-secondary btn-view-toggle"
+            type="button"
+            aria-label="Switch to chat view"
+            title="Switch to chat view"
+            aria-pressed="false">
+            Chat
+          </button>
+
+          <!-- Theme toggle — last in tab order per a11y guidance -->
         <button id="theme-toggle"
                 class="btn theme-toggle"
                 type="button"
@@ -111,7 +122,24 @@
          aria-label="Live transcript — dynamic speaker lanes"
          aria-relevant="additions"></div>
 
-    <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->
+        <!-- Chat feed — single-column chat view, shown on mobile or via toggle -->
+        <div class="chat-feed" id="chat-feed"
+          role="log"
+          aria-label="Live transcript — chat view"
+          aria-relevant="additions"></div>
+
+        <section id="empty-stage" class="empty-stage hidden" role="status" aria-live="polite">
+          <h2>Welcome to EchoLocate</h2>
+          <p>
+            Press Start and begin talking. Have a conversation and watch how voices are grouped.
+            How accurate is it? Can you switch to another language? Try that too.
+          </p>
+          <p>
+            EchoLocate is open source and privacy-first, built so everyone can stand on the shoulders of giants.
+          </p>
+        </section>
+
+        <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->
     <div class="interim-strip"
          role="status"
          aria-live="polite"
