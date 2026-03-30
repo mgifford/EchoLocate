@@ -65,15 +65,16 @@
           <span class="status-dot" id="status-dot" aria-hidden="true"></span>
           <span id="status-text">Ready</span>
         </div>
+
+        <label class="lang-picker-label" for="lang-select">Language</label>
+        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
+
         <button id="btn-start" class="btn btn-primary"   aria-label="Start transcription">Start</button>
         <button id="btn-stop"  class="btn btn-secondary" aria-label="Stop transcription"  disabled>Stop</button>
         <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
         <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
         <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
         <button id="btn-clear" class="btn btn-danger"    aria-label="Clear locally saved discussion">Clear Local</button>
-
-        <label class="lang-picker-label" for="lang-select">Language</label>
-        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
 
         <!-- Theme toggle — last in tab order per a11y guidance -->
           <!-- View toggle — switch between multi-lane and single chat feed -->
