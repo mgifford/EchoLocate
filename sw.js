@@ -87,7 +87,7 @@ self.addEventListener('fetch', (event) => {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleAddCard(request) {
-  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel;
+  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource;
 
   try {
     const body = await request.formData();
@@ -99,6 +99,7 @@ async function handleAddCard(request) {
     confidence        = parseFloat(body.get('confidence') ?? '1');
     timestamp         = body.get('timestamp')         ?? new Date().toISOString();
     profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
+    audioSource       = body.get('audioSource')       ?? 'mic';
   } catch {
     return new Response('Bad request', { status: 400 });
   }
@@ -109,8 +110,9 @@ async function handleAddCard(request) {
   if (isNaN(confidence) || confidence < 0 || confidence > 1) confidence = 1;
   if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
   if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
+  if (!['mic', 'computer'].includes(String(audioSource))) audioSource = 'mic';
 
-  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel });
+  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -125,7 +127,7 @@ async function handleAddCard(request) {
  * Opacity is driven by confidence so the user sees a visual "certainty" cue.
  * All user-supplied strings are HTML-escaped to prevent XSS.
  */
-function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel = 'high' }) {
+function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel = 'high', audioSource = 'mic' }) {
   const timeLabel    = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -142,14 +144,21 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
   // Opacity floor at 0.6 — text must always be readable
   const opacity = Math.max(0.6, confidence).toFixed(2);
 
+  // Source badge — shown only when system audio capture is active (computer source)
+  const sourceBadge = audioSource === 'computer'
+    ? '<span class="source-badge source-badge--computer" title="Computer audio (e.g. Zoom remote speaker)" aria-label="Computer audio">💻</span>'
+    : '';
+
   return `<article
-  class="card card-tone-${escapeAttr(tone)}"
+  class="card card-tone-${escapeAttr(tone)}${audioSource === 'computer' ? ' card-source-computer' : ''}"
   role="article"
   aria-label="${escapeAttr(speakerLabel)} at ${escapeAttr(timeLabel)}"
   data-speaker-id="${escapeAttr(speakerId)}"
+  data-audio-source="${escapeAttr(audioSource)}"
   style="opacity:${opacity};--speaker-color:${escapeAttr(speakerColor)}"
 >
   ${displayText}
+  ${sourceBadge}
   <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
   <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new cluster?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
 </article>`;
@@ -172,7 +181,7 @@ const escapeAttr = escapeHTML;
 // ── Chat route handler ────────────────────────────────────────────────────────
 
 async function handleAddChatMsg(request) {
-  let text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel;
+  let text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, audioSource;
   try {
     const body = await request.formData();
     text              = body.get('text')              ?? '';
@@ -182,6 +191,7 @@ async function handleAddChatMsg(request) {
     confidence        = parseFloat(body.get('confidence') ?? '1');
     timestamp         = body.get('timestamp')         ?? new Date().toISOString();
     profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
+    audioSource       = body.get('audioSource')       ?? 'mic';
   } catch {
     return new Response('Bad request', { status: 400 });
   }
@@ -190,9 +200,10 @@ async function handleAddChatMsg(request) {
   if (isNaN(confidence) || confidence < 0 || confidence > 1) confidence = 1;
   if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
   if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
+  if (!['mic', 'computer'].includes(String(audioSource))) audioSource = 'mic';
 
   const creatureIndex = Math.max(0, (parseInt(String(speakerId).replace('s', ''), 10) || 1) - 1) % CREATURE_SVGS.length;
-  const html = buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex });
+  const html = buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -201,7 +212,7 @@ async function handleAddChatMsg(request) {
 
 // ── Chat HTML builder ─────────────────────────────────────────────────────────
 
-function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex }) {
+function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource = 'mic' }) {
   const timeLabel = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -223,15 +234,21 @@ function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confide
     ? ' · new voice?'
     : profileMatchLevel === 'medium' ? ' · match uncertain' : '';
 
+  // Source badge for chat view
+  const sourceBadge = audioSource === 'computer'
+    ? '<span class="source-badge source-badge--computer" title="Computer audio (e.g. Zoom remote speaker)" aria-label="Computer audio">💻</span>'
+    : '';
+
   return `<div
-  class="chat-msg"
+  class="chat-msg${audioSource === 'computer' ? ' chat-msg-source-computer' : ''}"
   role="article"
   aria-label="${escapeAttr(speakerLabel)} at ${escapeAttr(timeLabel)}"
   data-speaker-id="${escapeAttr(speakerId)}"
+  data-audio-source="${escapeAttr(audioSource)}"
   style="--speaker-color:${escapeAttr(speakerColor)}">
   <div class="chat-avatar" aria-hidden="true">${svg}</div>
   <div class="chat-content">
-    <span class="chat-speaker">${escapeHTML(speakerLabel)}</span>
+    <span class="chat-speaker">${escapeHTML(speakerLabel)}${sourceBadge}</span>
     <div class="chat-bubble" style="background:${bgColor};border:1px solid ${bordColor}">${displayText}</div>
     <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
     <span class="chat-time">${escapeHTML(timeLabel)}${escapeHTML(matchNote)}</span>
