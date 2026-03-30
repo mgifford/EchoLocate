@@ -24,9 +24,10 @@ const CFG = Object.freeze({
   MFCC_COEFFS:              13,
   MAX_SPEAKERS:       6,
   DEBUG_POINTS_MAX:   120,
-  NETWORK_MAX_RETRIES:      5,
-  NETWORK_BACKOFF_INIT_MS:  1_000,
-  NETWORK_BACKOFF_MAX_MS:   30_000,
+  NETWORK_MAX_RETRIES:        5,
+  NETWORK_ONLINE_MAX_RETRIES: 3,
+  NETWORK_BACKOFF_INIT_MS:    1_000,
+  NETWORK_BACKOFF_MAX_MS:     30_000,
 });
 
 function apiUrl(path) {
@@ -1261,9 +1262,15 @@ const SpeechEngine = {
           return;
         }
         this._networkRetryCount++;
-        if (this._networkRetryCount > CFG.NETWORK_MAX_RETRIES) {
+        // When online, Chrome's speech API failure is likely a browser restriction
+        // (e.g. private/incognito mode) — stop sooner and give a clearer message.
+        const maxRetries = navigator.onLine ? CFG.NETWORK_ONLINE_MAX_RETRIES : CFG.NETWORK_MAX_RETRIES;
+        if (this._networkRetryCount > maxRetries) {
           console.error('[EchoLocate] Network errors exceeded retry limit — stopping');
-          setStatus('error', 'Network unavailable — press Start to retry');
+          const msg = navigator.onLine
+            ? 'Speech recognition blocked — if in a private/incognito window, try a regular one'
+            : 'Network unavailable — press Start to retry';
+          setStatus('error', msg);
           State.isRunning = false;
           return;
         }
@@ -1271,7 +1278,7 @@ const SpeechEngine = {
           this._networkRetryDelay * 2,
           CFG.NETWORK_BACKOFF_MAX_MS,
         );
-        setStatus('restarting', `Network error — retrying (${this._networkRetryCount}/${CFG.NETWORK_MAX_RETRIES})…`);
+        setStatus('restarting', `Network error — retrying (${this._networkRetryCount}/${maxRetries})…`);
         return;
       }
       setStatus('restarting', `Error: ${event.error}`);
