@@ -131,6 +131,7 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
   });
 
   const safeText = escapeHTML(text);
+  const confidencePct = Math.max(0, Math.min(100, Math.round(confidence * 100)));
 
   // Confidence < 0.7 → yellow-underlined text with tooltip
   const displayText =
@@ -149,6 +150,7 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
   style="opacity:${opacity};--speaker-color:${escapeAttr(speakerColor)}"
 >
   ${displayText}
+  <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
   <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new cluster?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
 </article>`;
 }
@@ -205,6 +207,7 @@ function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confide
   });
 
   const safeText = escapeHTML(text);
+  const confidencePct = Math.max(0, Math.min(100, Math.round(confidence * 100)));
   const displayText = confidence < 0.7
     ? `<span class="low-confidence" title="Low confidence (${Math.round(confidence * 100)}%)">${safeText}</span>`
     : safeText;
@@ -230,6 +233,7 @@ function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confide
   <div class="chat-content">
     <span class="chat-speaker">${escapeHTML(speakerLabel)}</span>
     <div class="chat-bubble" style="background:${bgColor};border:1px solid ${bordColor}">${displayText}</div>
+    <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
     <span class="chat-time">${escapeHTML(timeLabel)}${escapeHTML(matchNote)}</span>
   </div>
 </div>`;

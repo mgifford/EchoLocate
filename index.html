@@ -76,6 +76,13 @@
         <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
         <button id="btn-clear" class="btn btn-danger"    aria-label="Clear locally saved discussion">Clear Local</button>
 
+        <div class="merge-tools" aria-label="Merge speaker lanes">
+          <label for="merge-from">Merge</label>
+          <select id="merge-from" aria-label="Merge from speaker"></select>
+          <span>into</span>
+          <select id="merge-into" aria-label="Merge into speaker"></select>
+          <button id="btn-merge" class="btn btn-secondary" type="button" aria-label="Merge speaker lanes">Merge</button>
+        </div>
         <!-- Theme toggle — last in tab order per a11y guidance -->
           <!-- View toggle — switch between multi-lane and single chat feed -->
           <button id="btn-view-toggle"

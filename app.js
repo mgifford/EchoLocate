@@ -11,15 +11,15 @@ const CFG = Object.freeze({
   STORAGE_KEY:        'echolocate_v1',
   PITCH_WINDOW:       24,
   PITCH_HZ:           8,
-  WATCHDOG_MS:        12_000,
+  WATCHDOG_MS:        10_000,
   CARD_LIMIT:         500,
   RESTART_DELAY:      150,
-  VOICE_MATCH_RATIO:  0.18,
-  HIGH_CONF_RATIO:    0.06,
-  MED_CONF_RATIO:     0.12,
-  SIGNATURE_MATCH_DISTANCE: 0.22,
-  SIGNATURE_HIGH_DISTANCE:  0.11,
-  SIGNATURE_MED_DISTANCE:   0.18,
+  SIGNATURE_MATCH_SIMILARITY: 0.85,
+  SIGNATURE_HIGH_SIMILARITY:  0.93,
+  SIGNATURE_MED_SIMILARITY:   0.88,
+  HYSTERESIS_LOCK_MS:         400,
+  HYSTERESIS_MARGIN:          0.06,
+  MATCH_HISTORY_SIZE:         3,
   ROOM_PROFILE_MS:          10_000,
   MFCC_COEFFS:              13,
   MAX_SPEAKERS:       6,
@@ -108,6 +108,8 @@ const State = {
   visualizer:                null,
   profiles:                  [], // [{id,label,color,lastSpokenAt,avgPitch,tone,el,cardsEl,count}]
   activeSpeakerId:           null,
+  speakerLock:               null,
+  matchHistory:              [],
   nextSpeakerNum:            1,
   micDiagnostics:            null,
   stereoEnabled:             false,
@@ -364,32 +366,34 @@ function meanVector(vectors) {
   return acc.map((x) => x / vectors.length);
 }
 
-function vectorDistance(a, b) {
-  if (!a || !b || !a.length || !b.length || a.length !== b.length) return Number.POSITIVE_INFINITY;
-  let sum = 0;
+function cosineSimilarity(a, b) {
+  if (!a || !b || !a.length || !b.length || a.length !== b.length) return 0;
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
   for (let i = 0; i < a.length; i++) {
-    const d = (a[i] || 0) - (b[i] || 0);
-    sum += d * d;
+    const av = a[i] || 0;
+    const bv = b[i] || 0;
+    dot += av * bv;
+    magA += av * av;
+    magB += bv * bv;
   }
-  return Math.sqrt(sum / a.length);
+  if (!magA || !magB) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 function buildSignatureVector(frame, fallbackCentroid) {
   if (!frame) return null;
 
-  const mfcc = Array.isArray(frame.mfcc) ? frame.mfcc.slice(1, 8) : [];
+  const mfcc = Array.isArray(frame.mfcc) ? frame.mfcc.slice(0, 13) : [];
   const mfccScaled = mfcc.map((v) => (v || 0) / 100);
-  const centroid = Number.isFinite(frame.spectralCentroid) ? frame.spectralCentroid : (fallbackCentroid || 0);
-  const rolloff = Number.isFinite(frame.spectralRolloff) ? frame.spectralRolloff : centroid;
   const flatness = Number.isFinite(frame.spectralFlatness) ? frame.spectralFlatness : 0;
-  const zcr = Number.isFinite(frame.zcr) ? frame.zcr : 0;
+  const slope = Number.isFinite(frame.spectralSlope) ? frame.spectralSlope : 0;
 
   return [
     ...mfccScaled,
-    centroid / 6000,
-    rolloff / 6000,
     Math.min(1, Math.max(0, flatness * 10)),
-    Math.min(1, Math.max(0, zcr * 10)),
+    Math.max(-1, Math.min(1, slope * 1000)),
   ];
 }
 
@@ -397,13 +401,13 @@ function signatureDescriptor(features) {
   if (!features) return 'Profile warming up';
 
   const attack = features.zcr > 0.065 ? 'Sharp attack' : 'Smooth attack';
-  const formants = features.spectralCentroid > 1800 ? 'Higher formants' : 'Lower formants';
-  const tempo = features.rms > 0.05 ? 'Stronger tempo' : 'Softer tempo';
-  return `${attack}, ${formants}, ${tempo}`;
+  const resonance = features.spectralSlope < 0 ? 'Chest resonance' : 'Nasal resonance';
+  const texture = features.spectralFlatness > 0.16 ? 'Breathy texture' : 'Voiced texture';
+  return `${attack}, ${resonance}, ${texture}`;
 }
 
 function clusterLabelFromIndex(n) {
-  return `Cluster ${String.fromCharCode(64 + Math.min(n, 26))}`;
+  return `Guest ${n}`;
 }
 
 function classifyTone(value) {
@@ -434,6 +438,52 @@ function updateCardCount() {
   const total = document.querySelectorAll('.card').length;
   const el = document.getElementById('card-count');
   if (el) el.textContent = `${total} card${total !== 1 ? 's' : ''}`;
+  refreshMergeControls();
+}
+
+function refreshMergeControls() {
+  const fromSel = document.getElementById('merge-from');
+  const intoSel = document.getElementById('merge-into');
+  const btn = document.getElementById('btn-merge');
+  if (!fromSel || !intoSel || !btn) return;
+
+  const options = State.profiles.map((p) => ({ id: p.id, label: p.label }));
+  fromSel.innerHTML = options.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
+  intoSel.innerHTML = options.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
+
+  if (options.length >= 2) {
+    fromSel.value = options[1]?.id || options[0].id;
+    intoSel.value = options[0].id;
+  }
+  btn.disabled = options.length < 2;
+}
+
+async function mergeProfiles(fromId, intoId) {
+  if (!fromId || !intoId || fromId === intoId) return;
+  const source = profileById(fromId);
+  const target = profileById(intoId);
+  if (!source || !target) return;
+
+  const cards = Storage.allCards().map((card) => {
+    if (card.speakerId !== fromId) return card;
+    return {
+      ...card,
+      speakerId: target.id,
+      speakerLabel: target.label,
+      speakerColor: target.color,
+    };
+  });
+  Storage.replaceAll(cards);
+
+  document.getElementById('lanes-container').innerHTML = '';
+  const chatFeed = document.getElementById('chat-feed');
+  if (chatFeed) chatFeed.innerHTML = '';
+  State.profiles = [];
+  State.matchHistory = [];
+  State.speakerLock = null;
+  State.activeSpeakerId = null;
+  State.nextSpeakerNum = 1;
+  await restoreSession();
 }
 
 function updateEmptyStage() {
@@ -860,37 +910,60 @@ function touchProfile(profile, now) {
   updateSpeakerIndicator(profile);
 }
 
+class VoiceProfile {
+  constructor({ id, label, color, pitch, tone }) {
+    this.id = id;
+    this.label = label;
+    this.color = color;
+    this.lastSpokenAt = Date.now();
+    this.avgPitch = pitch;
+    this.tone = tone;
+    this.el = null;
+    this.cardsEl = null;
+    this.count = 0;
+    this.matchLevel = 'medium';
+    this.signature = null;
+    this.signatureStats = null;
+  }
+}
+
 function newProfile(pitch, tone) {
   const n = State.nextSpeakerNum;
   State.nextSpeakerNum += 1;
-  const label = clusterLabelFromIndex(n);
-
-  return {
+  return new VoiceProfile({
     id: `s${n}`,
-    label,
+    label: clusterLabelFromIndex(n),
     color: PALETTE[(n - 1) % PALETTE.length],
-    lastSpokenAt: Date.now(),
-    avgPitch: pitch,
+    pitch,
     tone,
-    el: null,
-    cardsEl: null,
-    count: 0,
-    matchLevel: 'medium',
-    signature: null,
-    signatureStats: null,
-  };
+  });
 }
 
-function confidenceFromRatio(ratio) {
-  if (ratio <= CFG.HIGH_CONF_RATIO) return 'high';
-  if (ratio <= CFG.MED_CONF_RATIO) return 'medium';
+function confidenceFromSimilarity(similarity) {
+  if (similarity >= CFG.SIGNATURE_HIGH_SIMILARITY) return 'high';
+  if (similarity >= CFG.SIGNATURE_MED_SIMILARITY) return 'medium';
   return 'low';
 }
 
-function confidenceFromSignatureDistance(distance) {
-  if (distance <= CFG.SIGNATURE_HIGH_DISTANCE) return 'high';
-  if (distance <= CFG.SIGNATURE_MED_DISTANCE) return 'medium';
-  return 'low';
+function smoothMatch(candidates) {
+  if (!candidates.length) return null;
+  const recent = candidates.slice(-CFG.MATCH_HISTORY_SIZE);
+  const idCounts = new Map();
+  for (const item of recent) {
+    idCounts.set(item.profile.id, (idCounts.get(item.profile.id) || 0) + 1);
+  }
+  let bestId = null;
+  let bestCount = -1;
+  for (const [id, count] of idCounts.entries()) {
+    if (count > bestCount) {
+      bestId = id;
+      bestCount = count;
+    }
+  }
+  if (bestCount >= 2) return recent.find((r) => r.profile.id === bestId) || recent[recent.length - 1];
+
+  const ranked = [...recent].sort((a, b) => a.similarity - b.similarity);
+  return ranked[Math.floor(ranked.length / 2)] || recent[recent.length - 1];
 }
 
 function resolveSpeakerProfile(metrics) {
@@ -910,25 +983,40 @@ function resolveSpeakerProfile(metrics) {
       const hint = first.el.querySelector('.lane-hint');
       if (hint) hint.textContent = signatureDescriptor(first.signatureStats);
     }
-    return { profile: first, matchRatio: 0, confidenceLevel: first.matchLevel, createdNew: true };
+    return { profile: first, matchRatio: 1, confidenceLevel: first.matchLevel, createdNew: true };
   }
 
-  let best = null;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  let useSignature = !!signature;
-
+  const scored = [];
   for (const p of State.profiles) {
-    const distance = (useSignature && p.signature)
-      ? vectorDistance(p.signature, signature)
-      : Math.abs(p.avgPitch - pitch) / Math.max(p.avgPitch, pitch, 1);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = p;
+    const similarity = (signature && p.signature)
+      ? cosineSimilarity(p.signature, signature)
+      : 0;
+    scored.push({ profile: p, similarity });
+  }
+  scored.sort((a, b) => b.similarity - a.similarity);
+  let best = scored[0]?.profile || null;
+  let bestSimilarity = scored[0]?.similarity || 0;
+
+  // Hysteresis lock to prevent lane flicker between adjacent similarities.
+  const lock = State.speakerLock;
+  if (lock && lock.until > Date.now()) {
+    const locked = scored.find((s) => s.profile.id === lock.id);
+    if (locked && (bestSimilarity - locked.similarity) < CFG.HYSTERESIS_MARGIN) {
+      best = locked.profile;
+      bestSimilarity = locked.similarity;
     }
   }
 
-  const threshold = useSignature ? CFG.SIGNATURE_MATCH_DISTANCE : CFG.VOICE_MATCH_RATIO;
-  if (best && (bestDistance <= threshold || State.profiles.length >= CFG.MAX_SPEAKERS)) {
+  State.matchHistory.push({ profile: best, similarity: bestSimilarity });
+  if (State.matchHistory.length > CFG.MATCH_HISTORY_SIZE) State.matchHistory.shift();
+  const smoothed = smoothMatch(State.matchHistory);
+  if (smoothed) {
+    best = smoothed.profile;
+    bestSimilarity = smoothed.similarity;
+  }
+
+  const shouldAttach = best && (bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY || State.profiles.length >= CFG.MAX_SPEAKERS);
+  if (shouldAttach) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
     best.tone = tone;
     if (signature) {
@@ -939,7 +1027,8 @@ function resolveSpeakerProfile(metrics) {
       }
     }
     best.signatureStats = signatureStats || best.signatureStats;
-    best.matchLevel = useSignature ? confidenceFromSignatureDistance(bestDistance) : confidenceFromRatio(bestDistance);
+    best.matchLevel = confidenceFromSimilarity(bestSimilarity);
+    State.speakerLock = { id: best.id, until: Date.now() + CFG.HYSTERESIS_LOCK_MS };
 
     if (best.el) {
       const hint = best.el.querySelector('.lane-hint');
@@ -949,7 +1038,7 @@ function resolveSpeakerProfile(metrics) {
           : laneHintFromTone(tone);
       }
     }
-    return { profile: best, matchRatio: bestDistance, confidenceLevel: best.matchLevel, createdNew: false };
+    return { profile: best, matchRatio: bestSimilarity, confidenceLevel: best.matchLevel, createdNew: false };
   }
 
   const next = newProfile(pitch, tone);
@@ -962,7 +1051,8 @@ function resolveSpeakerProfile(metrics) {
     const hint = next.el.querySelector('.lane-hint');
     if (hint) hint.textContent = signatureDescriptor(next.signatureStats);
   }
-  return { profile: next, matchRatio: 1, confidenceLevel: next.matchLevel, createdNew: true };
+  State.speakerLock = { id: next.id, until: Date.now() + CFG.HYSTERESIS_LOCK_MS };
+  return { profile: next, matchRatio: bestSimilarity, confidenceLevel: next.matchLevel, createdNew: true };
 }
 
 function flushUtteranceMetrics() {
@@ -983,6 +1073,7 @@ function flushUtteranceMetrics() {
         spectralCentroid: mean(signatureFrames.map((f) => f.spectralCentroid || centroid)),
         spectralRolloff: mean(signatureFrames.map((f) => f.spectralRolloff || centroid)),
         spectralFlatness: mean(signatureFrames.map((f) => f.spectralFlatness || 0)),
+        spectralSlope: mean(signatureFrames.map((f) => f.spectralSlope || 0)),
         zcr: mean(signatureFrames.map((f) => f.zcr || 0)),
         rms: mean(signatureFrames.map((f) => f.rms || 0)),
       }
@@ -1013,6 +1104,15 @@ const Storage = {
     }
     try {
       localStorage.setItem(CFG.STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // Ignore storage quota errors.
+    }
+  },
+
+  replaceAll(cards) {
+    const normalized = Array.isArray(cards) ? cards.slice(-CFG.CARD_LIMIT) : [];
+    try {
+      localStorage.setItem(CFG.STORAGE_KEY, JSON.stringify({ cards: normalized }));
     } catch {
       // Ignore storage quota errors.
     }
@@ -1409,7 +1509,7 @@ function initMeyda(source) {
       audioContext: State.audioCtx,
       source,
       bufferSize: 1024,
-      featureExtractors: ['mfcc', 'spectralCentroid', 'spectralRolloff', 'spectralFlatness', 'zcr', 'rms'],
+      featureExtractors: ['mfcc', 'spectralCentroid', 'spectralRolloff', 'spectralFlatness', 'spectralSlope', 'zcr', 'rms'],
       numberOfMFCCCoefficients: CFG.MFCC_COEFFS,
       callback: (features) => {
         State.latestSignatureFrame = features;
@@ -1500,7 +1600,9 @@ function toVtt(cards) {
 
     out += `${i + 1}\n`;
     out += `${formatVttTime(start - base)} --> ${formatVttTime(Math.max(end, start + 300) - base)}\n`;
-    out += `${cur.speakerLabel || 'Cluster'}: ${cur.text}\n\n`;
+    const speaker = String(cur.speakerLabel || 'Speaker').replace(/[<>]/g, '');
+    const text = String(cur.text || '').replace(/\n/g, ' ').trim();
+    out += `<v ${speaker}>${text}</v>\n\n`;
   }
 
   return out;
@@ -1585,6 +1687,9 @@ function initControls() {
   const btnExport = document.getElementById('btn-export');
   const btnDebug = document.getElementById('btn-debug');
   const btnStereo = document.getElementById('btn-stereo');
+  const btnMerge = document.getElementById('btn-merge');
+  const mergeFrom = document.getElementById('merge-from');
+  const mergeInto = document.getElementById('merge-into');
   const langSelect = document.getElementById('lang-select');
 
   btnStart.addEventListener('click', async () => {
@@ -1611,6 +1716,8 @@ function initControls() {
     Storage.clear();
     State.profiles = [];
     State.activeSpeakerId = null;
+    State.speakerLock = null;
+    State.matchHistory = [];
     State.nextSpeakerNum = 1;
     State.debugPoints = [];
     updateStereoInfoText();
@@ -1643,6 +1750,14 @@ function initControls() {
     langSelect.addEventListener('change', () => {
       applyRecognitionLanguage(langSelect.value, { fromUser: true });
       showLanguageHint('');
+    });
+  }
+
+  if (btnMerge && mergeFrom && mergeInto) {
+    btnMerge.addEventListener('click', () => {
+      mergeProfiles(mergeFrom.value, mergeInto.value).catch((err) => {
+        console.warn('[EchoLocate] Merge failed:', err.message);
+      });
     });
   }
 
@@ -1683,6 +1798,7 @@ async function boot() {
   TranscriptCtrl.init();
   if (hasSpeech) SpeechEngine.init();
   initControls();
+  refreshMergeControls();
   updateMicInfoText();
   updateDebugUI();
   renderDebugOverlay();
