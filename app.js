@@ -1176,6 +1176,7 @@ const SpeechEngine = {
   _watchdogTimer: null,
   _networkRetryCount: 0,
   _networkRetryDelay: CFG.NETWORK_BACKOFF_INIT_MS,
+  _offlineHandler: null,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1239,6 +1240,26 @@ const SpeechEngine = {
         return;
       }
       if (event.error === 'network') {
+        if (!navigator.onLine) {
+          console.warn('[EchoLocate] Network error while offline — suspending recognition until connection returns');
+          setStatus('error', 'Offline — will resume when connection returns');
+          State.isRunning = false;
+          if (!this._offlineHandler) {
+            this._offlineHandler = () => {
+              // Clear handler reference before starting to prevent duplicate registration
+              // if another network error fires during the start sequence.
+              this._offlineHandler = null;
+              console.log('[EchoLocate] Connection restored — resuming recognition');
+              this._networkRetryCount = 0;
+              this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+              if (!State.isRunning) {
+                SpeechEngine.start();
+              }
+            };
+            window.addEventListener('online', this._offlineHandler, { once: true });
+          }
+          return;
+        }
         this._networkRetryCount++;
         if (this._networkRetryCount > CFG.NETWORK_MAX_RETRIES) {
           console.error('[EchoLocate] Network errors exceeded retry limit — stopping');
@@ -1261,7 +1282,12 @@ const SpeechEngine = {
       clearTimeout(this._watchdogTimer);
       if (State.isRunning) {
         const delay = this._networkRetryCount > 0 ? this._networkRetryDelay : CFG.RESTART_DELAY;
-        setStatus('restarting', 'Reconnecting...');
+        console.log(`[EchoLocate] Scheduling restart in ${delay}ms (networkRetries: ${this._networkRetryCount})`);
+        if (this._networkRetryCount === 0) {
+          setStatus('restarting', 'Reconnecting...');
+        }
+        // When networkRetryCount > 0 the "Network error — retrying (N/M)…" status from
+        // onerror is preserved so the user can see progress during the backoff delay.
         setTimeout(() => {
           if (State.isRunning) this._rawStart();
         }, delay);
@@ -1313,6 +1339,10 @@ const SpeechEngine = {
       setStatus('error', 'Web Speech API unavailable');
       return;
     }
+    if (!navigator.onLine) {
+      setStatus('error', 'Offline — check your connection and try again');
+      return;
+    }
     State.isRunning = true;
 
     // Default to English when no language is explicitly chosen.
@@ -1339,6 +1369,10 @@ const SpeechEngine = {
     State.isRunning = false;
     this._networkRetryCount = 0;
     this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+    if (this._offlineHandler) {
+      window.removeEventListener('online', this._offlineHandler);
+      this._offlineHandler = null;
+    }
     stopLanguageHintTimer();
     showLanguageHint('');
     clearTimeout(this._watchdogTimer);
