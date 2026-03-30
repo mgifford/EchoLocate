@@ -24,6 +24,9 @@ const CFG = Object.freeze({
   MFCC_COEFFS:              13,
   MAX_SPEAKERS:       6,
   DEBUG_POINTS_MAX:   120,
+  NETWORK_MAX_RETRIES:      5,
+  NETWORK_BACKOFF_INIT_MS:  1_000,
+  NETWORK_BACKOFF_MAX_MS:   30_000,
 });
 
 function apiUrl(path) {
@@ -1171,6 +1174,8 @@ const TranscriptCtrl = {
 const SpeechEngine = {
   _rec: null,
   _watchdogTimer: null,
+  _networkRetryCount: 0,
+  _networkRetryDelay: CFG.NETWORK_BACKOFF_INIT_MS,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1202,6 +1207,8 @@ const SpeechEngine = {
 
     rec.onresult = (event) => {
       this._resetWatchdog();
+      this._networkRetryCount = 0;
+      this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
       State.lastResultAt = Date.now();
       let interim = '';
 
@@ -1231,6 +1238,21 @@ const SpeechEngine = {
         State.isRunning = false;
         return;
       }
+      if (event.error === 'network') {
+        this._networkRetryCount++;
+        if (this._networkRetryCount > CFG.NETWORK_MAX_RETRIES) {
+          console.error('[EchoLocate] Network errors exceeded retry limit — stopping');
+          setStatus('error', 'Network unavailable — press Start to retry');
+          State.isRunning = false;
+          return;
+        }
+        this._networkRetryDelay = Math.min(
+          this._networkRetryDelay * 2,
+          CFG.NETWORK_BACKOFF_MAX_MS,
+        );
+        setStatus('restarting', `Network error — retrying (${this._networkRetryCount}/${CFG.NETWORK_MAX_RETRIES})…`);
+        return;
+      }
       setStatus('restarting', `Error: ${event.error}`);
     };
 
@@ -1238,10 +1260,11 @@ const SpeechEngine = {
       console.log('[EchoLocate] SpeechRecognition ended — isRunning:', State.isRunning);
       clearTimeout(this._watchdogTimer);
       if (State.isRunning) {
+        const delay = this._networkRetryCount > 0 ? this._networkRetryDelay : CFG.RESTART_DELAY;
         setStatus('restarting', 'Reconnecting...');
         setTimeout(() => {
           if (State.isRunning) this._rawStart();
-        }, CFG.RESTART_DELAY);
+        }, delay);
       } else {
         setStatus('idle', 'Ready');
         stopLanguageHintTimer();
@@ -1314,6 +1337,8 @@ const SpeechEngine = {
 
   stop() {
     State.isRunning = false;
+    this._networkRetryCount = 0;
+    this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
     stopLanguageHintTimer();
     showLanguageHint('');
     clearTimeout(this._watchdogTimer);
