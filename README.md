@@ -1,58 +1,107 @@
 # EchoLocate
 
-**Live, private, in-browser captioning with simulated speaker grouping.**
+Live, private, in-browser captioning with simulated speaker grouping.
 
-> **Try it now → [mgifford.github.io/EchoLocate](https://mgifford.github.io/EchoLocate/)**
->
-> Works in Chrome and Edge.  No sign-up.  No data ever leaves your device.
+Try it now: [mgifford.github.io/EchoLocate](https://mgifford.github.io/EchoLocate/)
 
----
+## Purpose
 
-## What it does
+EchoLocate is designed as an accessibility-first captioning tool, especially for deaf and hard-of-hearing users who need live, glanceable transcripts in meetings and conversations.
 
-EchoLocate turns your browser into a real-time caption board.  As people speak,
-transcribed text appears in colour-coded lanes—one per detected voice—so you can
-follow who said what at a glance.
+The app runs fully client-side. Audio stays on-device. There is no backend speech pipeline.
 
-| Feature | Detail |
-|---------|--------|
-| Live captions | Web Speech API, starts in under a second |
-| Speaker lanes | Up to 6 simultaneous voices, colour-coded |
-| Voice clustering | Meyda audio-feature analysis + pitch heuristics |
-| Language detection | 35 languages; quick-switch EN / ES / FR buttons |
-| Export | Download the session as a WebVTT subtitle file |
-| Themes | Dark and light mode, persisted across sessions |
-| Offline-capable | All JS dependencies are vendored; no CDN required |
-| Privacy-first | Zero network calls; everything runs in your browser |
+## High-level architecture
 
----
+EchoLocate combines two browser pipelines in parallel:
 
-## Who it's for
+1. Speech-to-text pipeline
+- Input: browser microphone stream
+- Engine: Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
+- Output: transcript chunks with confidence values
 
-- **Deaf and hard-of-hearing users** who need real-time captions in meetings,
-  classrooms, or public spaces
-- **Interpreters and note-takers** who want a lightweight second screen
-- **Remote and hybrid teams** who want a quick, no-install caption overlay
-- **Accessibility researchers and educators** exploring browser-based captioning
+2. Voice differentiation pipeline
+- Input: same microphone stream via Web Audio API
+- Engine: Meyda feature extraction
+- Output: per-utterance voice fingerprint used to choose a speaker lane
 
----
+Rendering and persistence stack:
 
-## Quick start
+1. HTMX posts caption payloads to local routes
+2. Service Worker intercepts `/api/add-card` and `/api/add-chat-msg`
+3. Service Worker returns HTML fragments (cards/chat messages)
+4. Frontend inserts fragments without server round-trips
+5. Session data is stored in `localStorage`
 
-1. Open [mgifford.github.io/EchoLocate](https://mgifford.github.io/EchoLocate/)
-   in **Chrome or Edge** (desktop)
-2. Click **Start** and allow microphone access
-3. Speak — captions appear immediately in speaker lanes
-4. Click **Stop** when done; **Export VTT** to download the transcript
+## Voice fingerprinting model (Phase 1 reliability)
 
-Language buttons across the top bar let you tell the speech engine which
-language to expect.  EchoLocate also watches for language shifts within a session.
+EchoLocate uses vector comparison instead of a single scalar pitch comparison.
 
----
+Per-frame feature vector includes:
 
-## Run locally (fully offline)
+1. 13 MFCC coefficients
+2. Spectral flatness
+3. Spectral slope
 
-Clone the repo and start the bundled Python server — no npm, no build step:
+For lane assignment, the current vector is compared with each existing profile using cosine similarity:
+
+$$
+	ext{similarity} = \frac{\mathbf{A} \cdot \mathbf{B}}{\|\mathbf{A}\|\,\|\mathbf{B}\|}
+$$
+
+Behavior:
+
+1. If best similarity is high enough, append to that lane
+2. Otherwise, create a new guest lane (up to configured maximum)
+3. Profiles are updated incrementally over time to adapt to natural voice variation
+
+Why this matters: when a person raises or lowers pitch, timbre features (MFCC texture + slope/flatness) are often more stable than pitch alone.
+
+## Anti-flicker stability
+
+To reduce lane hopping during continuous speech:
+
+1. Hysteresis lock: once a lane is selected, it is temporarily favored for 400ms unless another lane is significantly stronger
+2. Temporal smoothing: recent match results are buffered and smoothed over the last 3 decisions
+
+This keeps one sentence from bouncing between two lanes.
+
+## Watchdog and warm restart
+
+Web Speech can silently stall in real browsers. EchoLocate adds a watchdog to recover automatically.
+
+1. If the app is running and no result is received for 10 seconds, recognition is restarted
+2. If `onend` fires while app state is still running, recognition warm-restarts automatically
+3. If user intentionally stops, watchdog is cleared and no restart occurs
+
+This is critical for accessibility reliability: silent failure is a communication failure.
+
+## Accessibility-focused UI behaviors
+
+1. Per-card confidence meter (0-100%) so users can quickly gauge transcript trust
+2. Active lane energy ring so users can see which speaker lane is currently focused
+3. Merge lanes controls to combine mistaken duplicate lanes in long sessions
+4. Language selector with `None (Auto)` mode and mismatch hints during low-recognition scenarios
+5. Chat or lane layout toggle for small screens and varied reading preferences
+
+## Export model
+
+Export uses WebVTT and includes speaker metadata tags:
+
+```vtt
+00:00:01.000 --> 00:00:04.000
+<v Speaker 1>Hello world</v>
+```
+
+This makes the transcript more useful in subtitle-capable tools that understand speaker cues.
+
+## Privacy model
+
+1. Audio processing happens in-browser
+2. Transcript data is stored locally in browser storage
+3. No transcript/audio is sent to external cloud services by default
+4. Offline operation is supported because vendor assets are committed in-repo
+
+## Run locally (offline-friendly)
 
 ```bash
 git clone https://github.com/mgifford/EchoLocate.git
@@ -60,84 +109,32 @@ cd EchoLocate
 python3 server.py
 ```
 
-Then open **http://localhost:8080/** in Chrome or Edge.
+Then open `http://localhost:8080/` in Chrome or Edge.
 
-All JavaScript dependencies (HTMX, Meyda, franc-min) are committed in `vendor/`
-so the app works without an internet connection.
+Optional model/dependency refresh scripts:
 
-### Optional: on-device language model (~14 MB one-time download)
+1. `./download-deps.sh`
+2. `./download-models.sh`
 
-```bash
-chmod +x download-models.sh
-./download-models.sh   # downloads Transformers.js + ONNX language-id model
-```
-
-After the download, restart the server.  EchoLocate detects the model files
-automatically and switches to neural language detection (97 languages, ~40 ms
-per card, fully offline).
-
-See [INSTALL.txt](INSTALL.txt) for the full setup guide and troubleshooting tips.
-
----
-
-## How it works
-
-```
-Microphone
-    │
-    ▼
-Web Audio API  ──►  Meyda (MFCC, spectral features)
-                         │
-                         ▼
-                  Voice profile store  ──►  Speaker lane
-    │
-    ▼
-Web Speech API  ──►  Transcript text  ──►  franc-min lang detection
-                         │
-                         ▼
-                   HTMX card insert  ──►  Service Worker renders HTML
-```
-
-- **No diarization API** — speaker grouping is simulated using pitch centroid
-  and Mel-frequency cepstral coefficients so everything stays client-side.
-- **Service worker** intercepts `POST ./api/add-card` and renders the caption
-  card HTML locally, so HTMX can swap it into the DOM without a server round-trip.
-- **localStorage** persists cards across page reloads; Clear wipes the slate.
-
----
-
-## Privacy
-
-All audio processing and transcript storage happens entirely in your browser.
-No microphone data, speech text, or session content is sent to any external
-service.  The full privacy notice is visible in the app until you dismiss it.
-
----
+See [INSTALL.txt](INSTALL.txt) for installation and troubleshooting details.
 
 ## Browser support
 
-| Browser | Captions | Voice clustering |
-|---------|----------|-----------------|
-| Chrome (desktop) | ✅ | ✅ |
-| Edge (desktop) | ✅ | ✅ |
-| Firefox | ❌ Web Speech API not supported | — |
-| Safari | ❌ Web Speech API not supported | — |
-| Chrome (Android) | ⚠️ Limited | ⚠️ Limited |
-
----
+1. Chrome desktop: supported
+2. Edge desktop: supported
+3. Firefox/Safari: Web Speech API limitation
 
 ## Contributing
 
-Bug reports and pull requests are welcome.  Please read [AGENTS.md](AGENTS.md)
-before contributing — it documents the working agreements, architecture
-constraints, and code-change checklist.
+Contributions are welcome, especially feedback from deaf and hard-of-hearing users on real-world conversation quality.
+
+Project repo: [github.com/mgifford/EchoLocate](https://github.com/mgifford/EchoLocate)
+
+Before committing:
 
 ```bash
-# Validate JS before committing
 node --check app.js && node --check sw.js
 ```
-
----
 
 ## License
 
