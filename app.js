@@ -164,10 +164,15 @@ function initTheme() {
 }
 
 async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
+  if (!('serviceWorker' in navigator)) {
+    console.warn('[EchoLocate] Service workers not supported in this browser — HTMX card fragments will not work.');
+    return;
+  }
   try {
-    await navigator.serviceWorker.register('./sw.js');
+    const reg = await navigator.serviceWorker.register('./sw.js');
+    console.log('[EchoLocate] Service worker registered (scope:', reg.scope, ')');
     await navigator.serviceWorker.ready;
+    console.log('[EchoLocate] Service worker active and controlling page.');
   } catch (err) {
     console.warn('[EchoLocate] SW registration skipped:', err.message);
   }
@@ -296,6 +301,9 @@ function startPitchSampling() {
     }
 
     updateProfilingStatus();
+
+    // Update the debug overlay summary in real-time even before the first card
+    if (State.debugEnabled && !State.debugPoints.length) updateDebugLiveStatus(c);
 
     if (State.stereoEnabled && State.stereoAnalyserL && State.stereoAnalyserR) {
       const left = channelEnergy(State.stereoAnalyserL);
@@ -707,6 +715,23 @@ function pushDebugPoint(point) {
   if (State.debugEnabled) renderDebugOverlay();
 }
 
+/**
+ * Updates the debug summary with real-time audio/SR status while listening
+ * but before any card has been committed (i.e. debugPoints is still empty).
+ */
+function updateDebugLiveStatus(latestCentroid) {
+  const summary = document.getElementById('debug-summary');
+  if (!summary) return;
+
+  const audioState = State.audioCtx ? State.audioCtx.state : 'no AudioContext';
+  const sampleCount = State.pitchHistory.length;
+  const centroidStr = latestCentroid > 0 ? `${latestCentroid.toFixed(1)} Hz` : 'silent (0 Hz)';
+  const meydaStr = State.meydaAnalyzer ? 'Meyda active' : (window.Meyda ? 'Meyda loaded' : 'Meyda unavailable');
+  const srActive = State.isRunning ? 'SR listening' : 'SR stopped';
+
+  summary.textContent = `${srActive} | Audio: ${audioState} | ${sampleCount} pitch samples | Latest centroid: ${centroidStr} | ${meydaStr}`;
+}
+
 function renderDebugOverlay() {
   const canvas = document.getElementById('debug-canvas');
   const summary = document.getElementById('debug-summary');
@@ -1005,25 +1030,34 @@ async function postCard(cardData) {
   }
 
   const profile = profileById(cardData.speakerId);
-  if (!profile) return;
+  if (!profile) {
+    console.warn('[EchoLocate] postCard: no profile found for speakerId', cardData.speakerId, '— card not rendered');
+    return;
+  }
   ensureLane(profile);
 
   const target = `#lane-${profile.id}-cards`;
+  console.log('[EchoLocate] Posting card to', target, '— text:', cardData.text.slice(0, 60));
 
-  await htmx.ajax('POST', API.ADD_CARD, {
-    target,
-    swap: 'beforeend',
-    values: {
-      text: cardData.text,
-      speakerId: cardData.speakerId,
-      speakerLabel: cardData.speakerLabel,
-      tone: cardData.tone,
-      speakerColor: cardData.speakerColor,
-      confidence: String(cardData.confidence),
-      timestamp: cardData.timestamp,
-      profileMatchLevel: cardData.profileMatchLevel || 'high',
-    },
-  });
+  try {
+    await htmx.ajax('POST', API.ADD_CARD, {
+      target,
+      swap: 'beforeend',
+      values: {
+        text: cardData.text,
+        speakerId: cardData.speakerId,
+        speakerLabel: cardData.speakerLabel,
+        tone: cardData.tone,
+        speakerColor: cardData.speakerColor,
+        confidence: String(cardData.confidence),
+        timestamp: cardData.timestamp,
+        profileMatchLevel: cardData.profileMatchLevel || 'high',
+      },
+    });
+    console.log('[EchoLocate] Card rendered in', target);
+  } catch (err) {
+    console.error('[EchoLocate] postCard htmx.ajax failed:', err);
+  }
 
   if (profile.cardsEl) {
     profile.cardsEl.scrollTop = profile.cardsEl.scrollHeight;
@@ -1147,7 +1181,10 @@ const SpeechEngine = {
     rec.lang = State.recognitionLang || DEFAULT_RECOGNITION_LANG;
     rec.maxAlternatives = 1;
 
+    console.log('[EchoLocate] SpeechRecognition initialized — lang:', rec.lang || '(auto/browser default)', '| continuous:', rec.continuous, '| interimResults:', rec.interimResults);
+
     rec.onstart = () => {
+      console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
       State.profilingStartedAt = Date.now();
       updateProfilingStatus();
       startPitchSampling();
@@ -1173,6 +1210,8 @@ const SpeechEngine = {
         const transcript = result[0].transcript.trim();
         const confidence = result[0].confidence ?? 1;
 
+        console.log(`[EchoLocate] SpeechRecognition result [${result.isFinal ? 'FINAL' : 'interim'}]: "${transcript}" (confidence: ${(confidence * 100).toFixed(0)}%)`);
+
         if (result.isFinal && transcript) {
           TranscriptCtrl.commitCard(transcript, confidence);
         } else if (transcript) {
@@ -1185,6 +1224,7 @@ const SpeechEngine = {
     };
 
     rec.onerror = (event) => {
+      console.error('[EchoLocate] SpeechRecognition error — type:', event.error, '| message:', event.message || '(none)');
       if (event.error === 'no-speech') return;
       if (event.error === 'not-allowed') {
         setStatus('error', 'Mic access blocked');
@@ -1195,6 +1235,7 @@ const SpeechEngine = {
     };
 
     rec.onend = () => {
+      console.log('[EchoLocate] SpeechRecognition ended — isRunning:', State.isRunning);
       clearTimeout(this._watchdogTimer);
       if (State.isRunning) {
         setStatus('restarting', 'Reconnecting...');
@@ -1316,16 +1357,24 @@ function initMeyda(source) {
 
 async function setupAudio() {
   if (State.audioCtx) {
-    if (State.audioCtx.state === 'suspended') await State.audioCtx.resume();
+    if (State.audioCtx.state === 'suspended') {
+      console.log('[EchoLocate] AudioContext was suspended — resuming.');
+      await State.audioCtx.resume();
+    }
     if (State.visualizer) State.visualizer.start();
     updateMicInfoText();
     return;
   }
 
+  console.log('[EchoLocate] Requesting microphone access...');
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   const track = stream.getAudioTracks()[0];
   const settings = track && track.getSettings ? track.getSettings() : {};
+  console.log('[EchoLocate] Microphone granted — label:', track?.label || '(unknown)',
+    '| channels:', settings.channelCount ?? '(unknown)', '| sampleRate:', settings.sampleRate ?? '(unknown)',
+    '| echoCancellation:', settings.echoCancellation ?? '(unknown)');
   State.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  console.log('[EchoLocate] AudioContext created — state:', State.audioCtx.state, '| sampleRate:', State.audioCtx.sampleRate);
   const source = State.audioCtx.createMediaStreamSource(stream);
   State.mediaSource = source;
 
@@ -1341,6 +1390,7 @@ async function setupAudio() {
   State.analyser.smoothingTimeConstant = 0.8;
   source.connect(State.analyser);
   initMeyda(source);
+  console.log('[EchoLocate] Meyda analyzer:', State.meydaAnalyzer ? 'initialized' : 'not available (pitch fallback only)');
 
   if ((State.micDiagnostics.channelCount || 1) > 1) {
     const splitter = State.audioCtx.createChannelSplitter(2);
