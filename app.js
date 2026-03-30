@@ -428,7 +428,7 @@ function updateEmptyStage() {
   const panel = document.getElementById('empty-stage');
   if (!panel) return;
   const count = Storage.allCards().length;
-  panel.classList.toggle('hidden', count > 0);
+  panel.classList.toggle('hidden', State.isRunning || count > 0);
 }
 
 function updateSpeakerIndicator(profile) {
@@ -1215,6 +1215,7 @@ const SpeechEngine = {
           }
         }
         TranscriptCtrl.clearInterim();
+        updateEmptyStage();
       }
     };
 
@@ -1250,11 +1251,20 @@ const SpeechEngine = {
     }
     State.isRunning = true;
 
+    // Default to English when no language is explicitly chosen.
+    if (!State.recognitionLang) {
+      applyRecognitionLanguage('en-US');
+    }
+
+    setStatus('active', 'Starting…');
+    updateEmptyStage();
+
     try {
       await setupAudio();
     } catch {
       setStatus('error', 'Mic access denied');
       State.isRunning = false;
+      updateEmptyStage();
       return;
     }
 
