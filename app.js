@@ -28,6 +28,11 @@ const CFG = Object.freeze({
   NETWORK_ONLINE_MAX_RETRIES: 3,
   NETWORK_BACKOFF_INIT_MS:    1_000,
   NETWORK_BACKOFF_MAX_MS:     30_000,
+  // Minimum ratio of system-audio energy to mic energy required to attribute
+  // a card to the computer source rather than the microphone.  A value of 1.5
+  // means the computer audio must be 50 % louder than the mic before we call
+  // it "remote/computer" — empirically robust against mic-pickup of speakers.
+  SYSTEM_AUDIO_ENERGY_RATIO:  1.5,
 });
 
 function apiUrl(path) {
@@ -120,6 +125,13 @@ const State = {
   debugEnabled:              false,
   debugPoints:               [],
   mediaSource:               null,
+  // Audio source detection
+  audioInputDeviceId:        localStorage.getItem('echolocate-audio-device') ?? '',
+  systemAudioEnabled:        false,
+  systemAudioStream:         null,
+  systemAudioAnalyser:       null,
+  systemAudioSamples:        [], // RMS energy samples during current utterance
+  micEnergySamples:          [], // mic RMS samples for source comparison
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
@@ -294,6 +306,8 @@ function startPitchSampling() {
   State.utteranceSignatureSamples = [];
   State.stereoSamplesL = [];
   State.stereoSamplesR = [];
+  State.micEnergySamples = [];
+  State.systemAudioSamples = [];
   State.sampleTimer = setInterval(() => {
     const c = spectralCentroid();
     if (c > 0) {
@@ -317,6 +331,14 @@ function startPitchSampling() {
       State.stereoSamplesL.push(left);
       State.stereoSamplesR.push(right);
       updateStereoInfoText(left, right);
+    }
+
+    // Sample mic and system audio energy for source attribution
+    if (State.analyser) {
+      State.micEnergySamples.push(channelEnergy(State.analyser));
+    }
+    if (State.systemAudioEnabled && State.systemAudioAnalyser) {
+      State.systemAudioSamples.push(channelEnergy(State.systemAudioAnalyser));
     }
   }, 1000 / CFG.PITCH_HZ);
 }
@@ -515,14 +537,15 @@ function updateMicInfoText() {
 
   const d = State.micDiagnostics;
   const channels = d.channelCount || 1;
+  const deviceLabel = d.label ? ` · ${d.label}` : '';
   if (channels > 1) {
     el.textContent = isSignatureModeEnabled()
-      ? `Mic channels: ${channels} (Meyda timbre clusters + pitch fallback)`
-      : `Mic channels: ${channels} (transcript still mixed; separation is mainly tone-based)`;
+      ? `🎤 Mic channels: ${channels} (Meyda timbre clusters + pitch fallback)${deviceLabel}`
+      : `🎤 Mic channels: ${channels} (transcript still mixed; separation is mainly tone-based)${deviceLabel}`;
   } else {
     el.textContent = isSignatureModeEnabled()
-      ? 'Mic channels: 1 (Meyda timbre clusters + pitch fallback)'
-      : 'Mic channels: 1 (speaker split is tone-based)';
+      ? `🎤 Mic channels: 1 (Meyda timbre clusters + pitch fallback)${deviceLabel}`
+      : `🎤 Mic channels: 1 (speaker split is tone-based)${deviceLabel}`;
   }
 }
 
@@ -1060,11 +1083,15 @@ function flushUtteranceMetrics() {
   const signatureFrames = State.utteranceSignatureSamples;
   const stereoL = State.stereoSamplesL;
   const stereoR = State.stereoSamplesR;
+  const micSamples = State.micEnergySamples;
+  const sysSamples = State.systemAudioSamples;
   stopPitchSampling();
   State.utteranceSamples = [];
   State.utteranceSignatureSamples = [];
   State.stereoSamplesL = [];
   State.stereoSamplesR = [];
+  State.micEnergySamples = [];
+  State.systemAudioSamples = [];
 
   const centroid = samples.length ? mean(samples) : (State.pitchHistory.length ? mean(State.pitchHistory) : 200);
   const tone = classifyTone(centroid);
@@ -1084,7 +1111,15 @@ function flushUtteranceMetrics() {
   const leftEnergy = stereoL.length ? mean(stereoL) : 0;
   const rightEnergy = stereoR.length ? mean(stereoR) : 0;
   const balance = (leftEnergy + rightEnergy) > 0 ? (leftEnergy - rightEnergy) / (leftEnergy + rightEnergy) : 0;
-  return { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance };
+
+  // Source attribution: compare mic vs system audio energy
+  const micEnergy = micSamples.length ? mean(micSamples) : 0;
+  const sysEnergy = sysSamples.length ? mean(sysSamples) : 0;
+  // Mark as 'computer' when system audio is clearly louder than mic (1.5× threshold)
+  const audioSource = (State.systemAudioEnabled && sysEnergy > 0 && sysEnergy > micEnergy * CFG.SYSTEM_AUDIO_ENERGY_RATIO)
+    ? 'computer' : 'mic';
+
+  return { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance, micEnergy, sysEnergy, audioSource };
 }
 
 const Storage = {
@@ -1156,6 +1191,7 @@ async function postCard(cardData) {
         confidence: String(cardData.confidence),
         timestamp: cardData.timestamp,
         profileMatchLevel: cardData.profileMatchLevel || 'high',
+        audioSource: cardData.audioSource || 'mic',
       },
     });
     console.log('[EchoLocate] Card rendered in', target);
@@ -1183,6 +1219,7 @@ async function postChatMsg(cardData) {
       confidence:        String(cardData.confidence),
       timestamp:         cardData.timestamp,
       profileMatchLevel: cardData.profileMatchLevel || 'high',
+      audioSource:       cardData.audioSource || 'mic',
     },
   });
   feed.scrollTop = feed.scrollHeight;
@@ -1213,7 +1250,7 @@ const TranscriptCtrl = {
     const startedAt = State.currentUtteranceStartedAt || (now - 1500);
     State.currentUtteranceStartedAt = null;
 
-    const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance } = flushUtteranceMetrics();
+    const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance, micEnergy, sysEnergy, audioSource } = flushUtteranceMetrics();
     const match = resolveSpeakerProfile({ centroid, tone, signature, signatureStats });
     const profile = match.profile;
     profile.count += 1;
@@ -1245,6 +1282,9 @@ const TranscriptCtrl = {
       stereoBalance: balance,
       stereoLeftEnergy: leftEnergy,
       stereoRightEnergy: rightEnergy,
+      audioSource,
+      micEnergy,
+      sysEnergy,
     };
 
     pushDebugPoint({
@@ -1521,6 +1561,72 @@ function initMeyda(source) {
   }
 }
 
+/**
+ * Populates the audio-device dropdown from enumerateDevices().
+ * Selecting a device updates State.audioInputDeviceId and localStorage,
+ * but only takes effect on the next Start (AudioContext re-init).
+ * Note: enumerateDevices() only returns labelled devices after mic permission
+ * has been granted; labels are empty strings before that.
+ */
+async function initAudioDeviceSelector() {
+  const sel = document.getElementById('audio-source-select');
+  if (!sel) return;
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    sel.closest('.source-picker-wrapper')?.classList.add('hidden');
+    return;
+  }
+
+  async function populateDevices() {
+    let devices;
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices();
+    } catch {
+      return;
+    }
+
+    const inputs = devices.filter((d) => d.kind === 'audioinput');
+
+    // Build option list
+    sel.innerHTML = '';
+
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'Default microphone';
+    sel.appendChild(defaultOpt);
+
+    for (const dev of inputs) {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      opt.textContent = dev.label || `Microphone ${sel.options.length}`;
+      sel.appendChild(opt);
+    }
+
+    // Re-select stored device if it still exists in the refreshed list
+    const storedId = State.audioInputDeviceId;
+    sel.value = (storedId && [...sel.options].some((o) => o.value === storedId)) ? storedId : '';
+  }
+
+  await populateDevices();
+
+  sel.addEventListener('change', () => {
+    const id = sel.value;
+    State.audioInputDeviceId = id;
+    if (id) {
+      localStorage.setItem('echolocate-audio-device', id);
+    } else {
+      localStorage.removeItem('echolocate-audio-device');
+    }
+    if (State.isRunning) {
+      // Show a hint that the change takes effect after restart
+      setStatus('active', 'Audio device changed — Stop and Start to apply');
+    }
+  });
+
+  // Re-populate when a new device is plugged in / unplugged
+  navigator.mediaDevices.addEventListener('devicechange', populateDevices);
+}
+
 async function setupAudio() {
   if (State.audioCtx) {
     if (State.audioCtx.state === 'suspended') {
@@ -1532,8 +1638,13 @@ async function setupAudio() {
     return;
   }
 
+  // Build audio constraints — use selected device if one is saved
+  const audioConstraints = State.audioInputDeviceId
+    ? { deviceId: { exact: State.audioInputDeviceId } }
+    : true;
+
   console.log('[EchoLocate] Requesting microphone access...');
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
   const track = stream.getAudioTracks()[0];
   const settings = track && track.getSettings ? track.getSettings() : {};
   console.log('[EchoLocate] Microphone granted — label:', track?.label || '(unknown)',
@@ -1548,8 +1659,11 @@ async function setupAudio() {
     channelCount: settings.channelCount || 1,
     sampleRate: settings.sampleRate || State.audioCtx.sampleRate,
     echoCancellation: settings.echoCancellation,
+    label: track?.label || '',
   };
   updateMicInfoText();
+  // Re-enumerate devices now that permission is granted (labels become available)
+  initAudioDeviceSelector().catch(() => {});
 
   State.analyser = State.audioCtx.createAnalyser();
   State.analyser.fftSize = 2048;
@@ -1574,6 +1688,115 @@ async function setupAudio() {
   const canvas = document.getElementById('visualizer');
   State.visualizer = new Visualizer(canvas, State.analyser);
   State.visualizer.start();
+}
+
+/**
+ * Captures system/tab audio via getDisplayMedia for source attribution.
+ * The captured stream is analysed for energy levels only — the Web Speech
+ * API still reads from the microphone and cannot be redirected here.
+ */
+async function setupSystemAudio() {
+  if (State.systemAudioEnabled) {
+    teardownSystemAudio();
+    return false;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    console.warn('[EchoLocate] getDisplayMedia not available in this browser.');
+    return false;
+  }
+
+  try {
+    let stream;
+    try {
+      // Chrome 119+ supports video:false for audio-only capture
+      stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
+    } catch (firstErr) {
+      // Older browsers require video:true — stop the video track immediately
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+        stream.getVideoTracks().forEach((t) => t.stop());
+      } catch (secondErr) {
+        console.warn('[EchoLocate] System audio capture failed on both attempts.',
+          'audio-only error:', firstErr.message,
+          '| video+audio error:', secondErr.message);
+        throw secondErr;
+      }
+    }
+
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks.length) {
+      stream.getTracks().forEach((t) => t.stop());
+      console.warn('[EchoLocate] getDisplayMedia returned no audio track — user may not have enabled audio sharing.');
+      return false;
+    }
+
+    // AudioContext must already exist (user must Start transcription first)
+    if (!State.audioCtx) {
+      console.warn('[EchoLocate] setupSystemAudio: AudioContext not ready — start transcription first.');
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
+    if (State.audioCtx.state === 'suspended') {
+      await State.audioCtx.resume();
+    }
+
+    const audioStream = new MediaStream(audioTracks);
+    State.systemAudioStream = audioStream;
+
+    const sysSource = State.audioCtx.createMediaStreamSource(audioStream);
+    State.systemAudioAnalyser = State.audioCtx.createAnalyser();
+    State.systemAudioAnalyser.fftSize = 2048;
+    State.systemAudioAnalyser.smoothingTimeConstant = 0.8;
+    sysSource.connect(State.systemAudioAnalyser);
+
+    State.systemAudioEnabled = true;
+    console.log('[EchoLocate] System audio capture active — track:', audioTracks[0].label || '(unlabeled)');
+
+    // Clean up when the user stops sharing via the browser's built-in UI
+    audioTracks[0].addEventListener('ended', () => {
+      teardownSystemAudio();
+      updateSystemAudioUI();
+    });
+
+    return true;
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') {
+      console.warn('[EchoLocate] System audio capture failed:', err.message);
+    }
+    return false;
+  }
+}
+
+function teardownSystemAudio() {
+  if (State.systemAudioStream) {
+    State.systemAudioStream.getTracks().forEach((t) => t.stop());
+    State.systemAudioStream = null;
+  }
+  if (State.systemAudioAnalyser) {
+    try { State.systemAudioAnalyser.disconnect(); } catch { /* ignore */ }
+    State.systemAudioAnalyser = null;
+  }
+  State.systemAudioEnabled = false;
+  State.systemAudioSamples = [];
+  console.log('[EchoLocate] System audio capture stopped.');
+}
+
+function updateSystemAudioUI() {
+  const btn = document.getElementById('btn-system-audio');
+  if (btn) {
+    btn.setAttribute('aria-pressed', State.systemAudioEnabled ? 'true' : 'false');
+    btn.textContent = State.systemAudioEnabled ? 'Sys Audio On' : 'Sys Audio';
+  }
+  const info = document.getElementById('system-audio-info');
+  if (info) {
+    if (State.systemAudioEnabled) {
+      info.textContent = '💻 Computer audio: active';
+      info.classList.remove('hidden');
+    } else {
+      info.classList.add('hidden');
+    }
+  }
 }
 
 function formatVttTime(ms) {
@@ -1670,6 +1893,7 @@ async function restoreSession() {
       stereoBalance: card.stereoBalance ?? 0,
       stereoLeftEnergy: card.stereoLeftEnergy ?? 0,
       stereoRightEnergy: card.stereoRightEnergy ?? 0,
+      audioSource: card.audioSource || 'mic',
     };
 
     await postCard(normalized);
@@ -1687,6 +1911,7 @@ function initControls() {
   const btnExport = document.getElementById('btn-export');
   const btnDebug = document.getElementById('btn-debug');
   const btnStereo = document.getElementById('btn-stereo');
+  const btnSystemAudio = document.getElementById('btn-system-audio');
   const btnMerge = document.getElementById('btn-merge');
   const mergeFrom = document.getElementById('merge-from');
   const mergeInto = document.getElementById('merge-into');
@@ -1746,6 +1971,25 @@ function initControls() {
     updateStereoInfoText();
   });
 
+  if (btnSystemAudio) {
+    btnSystemAudio.addEventListener('click', async () => {
+      if (State.systemAudioEnabled) {
+        teardownSystemAudio();
+        updateSystemAudioUI();
+      } else {
+        if (!State.audioCtx) {
+          setStatus('active', 'Start transcription first, then enable system audio.');
+          return;
+        }
+        const ok = await setupSystemAudio();
+        updateSystemAudioUI();
+        if (!ok) {
+          setStatus('active', 'System audio not captured — share a tab or screen with audio enabled.');
+        }
+      }
+    });
+  }
+
   if (langSelect) {
     langSelect.addEventListener('change', () => {
       applyRecognitionLanguage(langSelect.value, { fromUser: true });
@@ -1793,6 +2037,7 @@ async function boot() {
   await initLanguageSelector();
   await initLanguageDetection();
   initViewToggle();
+  await initAudioDeviceSelector();
 
   await registerServiceWorker();
   TranscriptCtrl.init();
@@ -1800,6 +2045,7 @@ async function boot() {
   initControls();
   refreshMergeControls();
   updateMicInfoText();
+  updateSystemAudioUI();
   updateDebugUI();
   renderDebugOverlay();
   updateEmptyStage();

@@ -742,6 +742,43 @@ body {
   white-space: nowrap;
 }
 
+.system-audio-info {
+  color: #f9a825;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* Source badge — inline icon shown on cards and chat messages */
+.source-badge {
+  display: inline-block;
+  font-size: 0.85em;
+  margin-left: 0.25em;
+  vertical-align: middle;
+  line-height: 1;
+  cursor: help;
+}
+
+.source-badge--computer {
+  /* Subtle amber tint to make computer-source cards visually distinct */
+  filter: drop-shadow(0 0 2px rgba(249, 168, 37, 0.5));
+}
+
+/* Computer-source cards get a faint left border accent */
+.card.card-source-computer {
+  border-left: 3px solid rgba(249, 168, 37, 0.6);
+}
+
+/* Source picker wrapper — keeps label + select inline like language picker */
+.source-picker-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.source-select {
+  min-width: 140px;
+}
+
 #btn-stereo[disabled] {
   opacity: 0.25;
 }
@@ -834,6 +871,8 @@ body {
   .mic-status { display: none; }
   .mic-info   { display: none; }
   .stereo-info { display: none; }
+  .system-audio-info { display: none; }
+  .source-picker-wrapper { display: none; }
   .footer-community {
     font-size: 0.68rem;
     padding: 0.2rem 0.75rem 0.45rem;
