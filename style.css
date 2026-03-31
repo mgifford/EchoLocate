@@ -54,11 +54,11 @@
   --btn-danger-border:  #3a1010;
   --theme-badge-bg:     #1c1c1c;
   --interim-bg:         rgba(0, 0, 0, 0.92);
-  --interim-label-col:  #282828;
+  --interim-label-col:  #808080;  /* was #282828 — 1.42:1 → now 5.3:1 against near-black (WCAG AA) */
   --lane-active-border: rgba(255, 255, 255, 0.35);
   --status-dot-idle:    #333333;
-  --mic-info-col:       #6d6d6d;
-  --autosave-col:       #2c4a2c;
+  --mic-info-col:       #909090;  /* was #6d6d6d — 3.75:1 → now 6.4:1 against #0d0d0d (WCAG AA) */
+  --autosave-col:       #52a652;  /* was #2c4a2c — 1.96:1 → now 6.7:1 against #0d0d0d (WCAG AA) */
   --scrollbar-thumb:    #222222;
 }
 
@@ -79,14 +79,14 @@
   --btn-danger-border:  #ffc9c9;
   --theme-badge-bg:     #e9ecef;
   --interim-bg:         rgba(240, 242, 245, 0.97);
-  --interim-label-col:  #b0b3b8;
+  --interim-label-col:  #595959;  /* was #b0b3b8 — 1.79:1 → now 6.2:1 against #f0f2f5 (WCAG AA) */
   --lane-active-border: rgba(0, 0, 0, 0.20);
   --status-dot-idle:    #ced4da;
   --text-primary:       #1a1a2e;
   --text-muted:         #5c6370;
   --text-interim:       rgba(26, 26, 46, 0.5);
-  --mic-info-col:       #888888;
-  --autosave-col:       #2f6b2f;
+  --mic-info-col:       #767676;  /* was #888888 — 3.56:1 → now 4.5:1 against #ffffff (WCAG AA) */
+  --autosave-col:       #2f6b2f;  /* 5.9:1 against #ffffff — already passing */
   --scrollbar-thumb:    #ced4da;
   --danger:             #c92a2a;
   --success:            #2f9e44;
