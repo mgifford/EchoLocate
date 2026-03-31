@@ -150,12 +150,24 @@ function isEdgeBrowser() {
 
 function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) return true;
+  if (SR) {
+    // Web Speech API is present.  For Edge users who have not yet seen the
+    // setup guide, show a proactive info modal so they know what to configure
+    // before pressing Start.
+    if (isEdgeBrowser() && !localStorage.getItem(EDGE_MODAL_DISMISSED_KEY)) {
+      // Defer to next microtask so the rest of boot() finishes first.
+      Promise.resolve().then(() => {
+        showSpeechHelpModal(
+          '⚠ Edge: enable online speech recognition',
+          EDGE_SETUP_HTML,
+          'info',
+        );
+      });
+    }
+    return true;
+  }
 
   State.speechSupported = false;
-
-  const warning = document.getElementById('speech-warning');
-  if (warning) warning.classList.remove('hidden');
 
   // Switch the welcome screen to the "unsupported" message so the user is
   // not told to press Start in a browser where it will never work.
@@ -172,7 +184,106 @@ function checkBrowserSupport() {
   if (stop) stop.disabled = true;
 
   setStatus('error', 'Web Speech API not supported');
+
+  // Show the inline banner as well as the modal so there is always a visible
+  // persistent reminder even after the modal is closed.
+  const warning = document.getElementById('speech-warning');
+  if (warning) warning.classList.remove('hidden');
+
+  Promise.resolve().then(() => {
+    const browserName = isEdgeBrowser() ? 'Microsoft Edge' : 'this browser';
+    showSpeechHelpModal(
+      '⚠ Speech recognition not available',
+      `<p><strong>${escapeHTML(browserName)}</strong> does not support the
+      Web Speech API required for live transcription.</p>
+      <p>For best results, use <strong>Google Chrome</strong> in a regular
+      (non-incognito) window.</p>
+      <p>Microsoft Edge also supports it, but requires
+      <strong>Use online speech recognition</strong> to be enabled in
+      <strong>Edge Settings → Privacy, search, and services → Services</strong>
+      (<code>edge://settings/privacy</code>).</p>`,
+    );
+  });
   return false;
+}
+
+// ── Speech Help Modal ─────────────────────────────────────────────────────────
+
+const EDGE_SETUP_HTML = `
+  <p>You are using <strong>Microsoft Edge</strong>, which requires
+  <strong>Use online speech recognition</strong> to be enabled before
+  EchoLocate can transcribe speech.</p>
+  <p><strong>To enable it in Edge:</strong></p>
+  <ol>
+    <li>Copy this address and paste it into a new Edge tab:<br>
+        <code>edge://settings/privacy</code></li>
+    <li>Scroll down to the <strong>Services</strong> section</li>
+    <li>Turn on <strong>Use online speech recognition</strong></li>
+    <li>Return here and press <strong>Start</strong></li>
+  </ol>
+  <p>If that option is missing, a browser or organization policy may be
+  blocking it — contact your IT administrator, or switch to
+  <strong>Google Chrome</strong>.</p>
+  <p>Speech recognition is also blocked in <strong>InPrivate</strong>
+  windows — open a regular Edge window instead.</p>
+`;
+
+const SPEECH_BLOCKED_HTML = `
+  <p>Speech recognition is blocked. This can happen in:</p>
+  <ol>
+    <li><strong>Private / Incognito windows</strong> — try a regular browser window</li>
+    <li><strong>Browsers with restricted settings</strong> — check that microphone
+        access is permitted for this site</li>
+  </ol>
+  <p>For the best experience, use <strong>Google Chrome</strong> in a
+  regular (non-incognito) window.</p>
+`;
+
+const EDGE_MODAL_DISMISSED_KEY = 'echolocate-edge-modal-dismissed';
+
+// All callers must pass only trusted, pre-defined HTML strings — never user-
+// controlled content.  The bodyHTML parameter is always sourced from the
+// module-level constants (EDGE_SETUP_HTML, SPEECH_BLOCKED_HTML) or inline
+// literals built with escapeHTML() for any dynamic parts.
+function showSpeechHelpModal(title, bodyHTML, level = 'error') {
+  const modal = document.getElementById('speech-help-modal');
+  if (!modal) return;
+
+  const titleEl = document.getElementById('speech-modal-title');
+  const bodyEl  = document.getElementById('speech-modal-body');
+  if (titleEl) {
+    titleEl.textContent = title;
+    titleEl.className = level === 'info'
+      ? 'speech-modal-title info'
+      : 'speech-modal-title';
+  }
+  if (bodyEl) bodyEl.innerHTML = bodyHTML;
+
+  if (!modal.open) modal.showModal();
+}
+
+function initSpeechHelpModal() {
+  const modal    = document.getElementById('speech-help-modal');
+  const closeBtn = document.getElementById('speech-modal-close');
+  const okBtn    = document.getElementById('speech-modal-ok');
+  if (!modal) return;
+
+  const handleClose = () => {
+    modal.close();
+    // Remember that the user has seen the Edge info so we don't show it every load.
+    if (isEdgeBrowser()) {
+      localStorage.setItem(EDGE_MODAL_DISMISSED_KEY, '1');
+    }
+  };
+
+  if (closeBtn) closeBtn.addEventListener('click', handleClose);
+  if (okBtn)    okBtn.addEventListener('click', handleClose);
+
+  // Close on backdrop click (click on the <dialog> element itself, not its contents).
+  // Registered once here; initSpeechHelpModal() must only be called once (from boot()).
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) handleClose();
+  });
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────────────────
@@ -1451,10 +1562,17 @@ const SpeechEngine = {
           let msg;
           if (navigator.onLine) {
             if (isEdgeBrowser()) {
-              document.getElementById('edge-speech-warning')?.classList.remove('hidden');
-              msg = 'Edge speech recognition blocked — see the notice above';
+              showSpeechHelpModal(
+                '⚠ Edge speech recognition blocked',
+                EDGE_SETUP_HTML,
+              );
+              msg = 'Edge speech recognition blocked — see the help dialog';
             } else {
-              msg = 'Speech recognition blocked — if in a private/incognito window, try a regular one';
+              showSpeechHelpModal(
+                '⚠ Speech recognition blocked',
+                SPEECH_BLOCKED_HTML,
+              );
+              msg = 'Speech recognition blocked — see the help dialog';
             }
           } else {
             msg = 'Network unavailable — press Start to retry';
@@ -1546,9 +1664,6 @@ const SpeechEngine = {
       return;
     }
     State.isRunning = true;
-
-    // Hide any browser-specific warning banners on each new start attempt.
-    document.getElementById('edge-speech-warning')?.classList.add('hidden');
 
     // Default to English when no language is explicitly chosen.
     if (!State.recognitionLang) {
@@ -2127,6 +2242,7 @@ async function boot() {
   const hasSpeech = checkBrowserSupport();
 
   initTheme();
+  initSpeechHelpModal();
 
   if (localStorage.getItem('echolocate-privacy-dismissed')) {
     const notice = document.getElementById('privacy-notice');

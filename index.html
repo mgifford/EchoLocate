@@ -53,15 +53,19 @@
     <strong>Use online speech recognition</strong> to be enabled in Edge settings.
   </div>
 
-  <div id="edge-speech-warning" class="hidden" role="alert" aria-live="assertive" aria-atomic="true">
-    <strong>⚠ Edge speech recognition blocked</strong> —
-    Edge requires online speech processing to be enabled.
-    Open <strong>Edge Settings</strong> → <strong>Privacy, search, and services</strong> → scroll to
-    <strong>Services</strong> → turn on <strong>Use online speech recognition</strong>.
-    If that option is missing, a browser or organization policy may be blocking it —
-    contact your IT administrator, or switch to <strong>Google Chrome</strong>.
-    Speech recognition is also blocked in <strong>InPrivate</strong> windows.
-  </div>
+  <!-- Speech help modal — shown on Edge page-load check and after speech errors -->
+  <dialog id="speech-help-modal" aria-labelledby="speech-modal-title">
+    <div class="speech-modal-content">
+      <div class="speech-modal-header">
+        <h2 id="speech-modal-title" class="speech-modal-title"></h2>
+        <button id="speech-modal-close" class="speech-modal-close btn" aria-label="Close dialog">✕</button>
+      </div>
+      <div id="speech-modal-body" class="speech-modal-body"></div>
+      <div class="speech-modal-footer">
+        <button id="speech-modal-ok" class="btn btn-primary">OK, got it</button>
+      </div>
+    </div>
+  </dialog>
 
   <header class="app-header" role="banner">
     <div class="header-inner">
