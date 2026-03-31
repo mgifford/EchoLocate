@@ -110,7 +110,6 @@ body {
   overflow: hidden;
   /* Prevent iOS font-size inflation */
   -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
@@ -267,6 +266,7 @@ body {
   border-radius: 4px;
   font-family: monospace;
   font-size: 0.88em;
+  -webkit-user-select: all;
   user-select: all;
 }
 
@@ -633,7 +633,7 @@ body {
 .lane-trans-target:focus-visible {
   outline: 2px solid var(--accent-a);
   outline-offset: 1px;
-  border-color: color-mix(in srgb, var(--accent-a) 60%, var(--border-subtle));
+  border-color: var(--accent-a);
 }
 
 .lane-trans-targets {
