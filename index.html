@@ -275,6 +275,23 @@
       <div id="debug-summary" class="debug-summary">No pitch data yet.</div>
     </aside>
 
+    <!-- On-screen debug console — shown when Debug mode is active; always visible even on mobile -->
+    <section id="debug-log-panel" class="debug-log-panel hidden"
+             role="log"
+             aria-label="Debug console"
+             aria-live="polite"
+             aria-atomic="false">
+      <div class="debug-log-head">
+        <strong>Debug Console</strong>
+        <button id="btn-debug-log-clear" class="btn btn-secondary" type="button"
+                aria-label="Clear debug console log">Clear</button>
+      </div>
+      <div id="debug-device-info" class="debug-device-info"></div>
+      <ul id="debug-log-entries" class="debug-log-entries"
+          tabindex="0"
+          aria-label="Console log entries"></ul>
+    </section>
+
   </main>
 
   <footer class="app-footer" role="contentinfo">

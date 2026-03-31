@@ -24,6 +24,7 @@ const CFG = Object.freeze({
   MFCC_COEFFS:              13,
   MAX_SPEAKERS:       6,
   DEBUG_POINTS_MAX:   120,
+  DEBUG_LOG_MAX:       75,
   NETWORK_MAX_RETRIES:        5,
   NETWORK_ONLINE_MAX_RETRIES: 3,
   NETWORK_BACKOFF_INIT_MS:    1_000,
@@ -1442,11 +1443,16 @@ function renderDebugOverlay() {
 
 function updateDebugUI() {
   const overlay = document.getElementById('debug-overlay');
-  const btn = document.getElementById('btn-debug');
+  const panel   = document.getElementById('debug-log-panel');
+  const btn     = document.getElementById('btn-debug');
   if (!overlay || !btn) return;
   overlay.classList.toggle('hidden', !State.debugEnabled);
+  if (panel) panel.classList.toggle('hidden', !State.debugEnabled);
   btn.setAttribute('aria-pressed', State.debugEnabled ? 'true' : 'false');
-  if (State.debugEnabled) renderDebugOverlay();
+  if (State.debugEnabled) {
+    renderDebugOverlay();
+    DebugLog.render();
+  }
 }
 
 function profileById(id) {
@@ -2004,6 +2010,107 @@ const TranscriptCtrl = {
     updateEmptyStage();
 
     startPitchSampling();
+  },
+};
+
+// ── On-screen debug console ──────────────────────────────────────────────────
+// Intercepts console.error / console.warn and [EchoLocate]-prefixed console.log
+// messages so that failures are visible on Android where DevTools is unavailable.
+const DebugLog = {
+  _entries: [],
+
+  /** Convert mixed console arguments to a single string. */
+  _fmt(args) {
+    return args.map((a) => {
+      if (a instanceof Error) return `${a.name}: ${a.message}`;
+      if (a !== null && typeof a === 'object') {
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }
+      return String(a);
+    }).join(' ');
+  },
+
+  /**
+   * Patch console.error / console.warn / console.log and register global
+   * error handlers so all relevant messages reach the on-screen panel.
+   * Must be called once, early in boot(), before any other code runs.
+   */
+  install() {
+    const self = this;
+    const origError = console.error;
+    const origWarn  = console.warn;
+    const origLog   = console.log;
+
+    console.error = function (...args) {
+      origError.apply(console, args);
+      self.push('error', self._fmt(args));
+    };
+    console.warn = function (...args) {
+      origWarn.apply(console, args);
+      self.push('warn', self._fmt(args));
+    };
+    // Only mirror [EchoLocate]-prefixed log lines to avoid noise.
+    console.log = function (...args) {
+      origLog.apply(console, args);
+      if (typeof args[0] === 'string' && args[0].startsWith('[EchoLocate]')) {
+        self.push('info', self._fmt(args));
+      }
+    };
+
+    window.addEventListener('error', (e) => {
+      self.push('error', `Uncaught: ${e.message} (${e.filename || 'unknown'}:${e.lineno || '?'})`);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      const r = e.reason;
+      self.push('error', `Unhandled rejection: ${r instanceof Error ? r.message : String(r)}`);
+    });
+  },
+
+  push(level, msg) {
+    const now = new Date();
+    const hh  = String(now.getHours()).padStart(2, '0');
+    const mm  = String(now.getMinutes()).padStart(2, '0');
+    const ss  = String(now.getSeconds()).padStart(2, '0');
+    this._entries.push({ level, msg: String(msg), time: `${hh}:${mm}:${ss}` });
+    if (this._entries.length > CFG.DEBUG_LOG_MAX) this._entries.shift();
+    if (State.debugEnabled) this.render();
+  },
+
+  deviceInfo() {
+    const sr  = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    const sw  = 'serviceWorker' in navigator;
+    const ctx = State.audioCtx;
+    return [
+      `UA: ${navigator.userAgent}`,
+      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
+      `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
+      `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'}`,
+      `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
+    ].join('\n');
+  },
+
+  render() {
+    const panel     = document.getElementById('debug-log-panel');
+    const deviceEl  = document.getElementById('debug-device-info');
+    const entriesEl = document.getElementById('debug-log-entries');
+    if (!panel || !deviceEl || !entriesEl) return;
+
+    deviceEl.textContent = this.deviceInfo();
+
+    // Render newest-first so the most recent entry is always visible at the top.
+    entriesEl.innerHTML = '';
+    const reversed = this._entries.slice().reverse();
+    for (const entry of reversed) {
+      const li = document.createElement('li');
+      li.className = `debug-log-entry debug-log-entry--${entry.level}`;
+      li.textContent = `[${entry.time}] ${entry.msg}`;
+      entriesEl.appendChild(li);
+    }
+  },
+
+  clear() {
+    this._entries = [];
+    this.render();
   },
 };
 
@@ -2736,6 +2843,11 @@ function initControls() {
     updateDebugUI();
   });
 
+  const btnDebugLogClear = document.getElementById('btn-debug-log-clear');
+  if (btnDebugLogClear) {
+    btnDebugLogClear.addEventListener('click', () => DebugLog.clear());
+  }
+
   btnStereo.addEventListener('click', () => {
     if (btnStereo.disabled) return;
     State.stereoEnabled = !State.stereoEnabled;
@@ -2797,6 +2909,7 @@ function initControls() {
 }
 
 async function boot() {
+  DebugLog.install();
   checkSecureContext();
   const hasSpeech = checkBrowserSupport();
 
