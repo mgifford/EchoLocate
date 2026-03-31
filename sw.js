@@ -87,7 +87,7 @@ self.addEventListener('fetch', (event) => {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleAddCard(request) {
-  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource;
+  let text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource, translatedText, translationLang, translationsJson;
 
   try {
     const body = await request.formData();
@@ -100,6 +100,9 @@ async function handleAddCard(request) {
     timestamp         = body.get('timestamp')         ?? new Date().toISOString();
     profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
     audioSource       = body.get('audioSource')       ?? 'mic';
+    translatedText    = body.get('translatedText')    ?? '';
+    translationLang   = body.get('translationLang')   ?? '';
+    translationsJson  = body.get('translationsJson')  ?? '[]';
   } catch {
     return new Response('Bad request', { status: 400 });
   }
@@ -111,8 +114,14 @@ async function handleAddCard(request) {
   if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
   if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
   if (!['mic', 'computer'].includes(String(audioSource))) audioSource = 'mic';
+  if (!/^[a-z]{0,8}$/.test(String(translationLang))) translationLang = '';
 
-  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource });
+  let translations = parseTranslationsJson(translationsJson);
+  if (!translations.length && translatedText) {
+    translations = [{ lang: translationLang, text: translatedText }];
+  }
+
+  const html = buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel, audioSource, translations });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -127,7 +136,7 @@ async function handleAddCard(request) {
  * Opacity is driven by confidence so the user sees a visual "certainty" cue.
  * All user-supplied strings are HTML-escaped to prevent XSS.
  */
-function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel = 'high', audioSource = 'mic' }) {
+function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, confidence, timestamp, profileMatchLevel = 'high', audioSource = 'mic', translations = [] }) {
   const timeLabel    = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -149,6 +158,9 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
     ? '<span class="source-badge source-badge--computer" title="Computer audio (e.g. Zoom remote speaker)" aria-label="Computer audio">💻</span>'
     : '';
 
+  // Translation block — only rendered when a translated string was provided
+  const translationBlock = renderTranslationBlocks(translations);
+
   return `<article
   class="card card-tone-${escapeAttr(tone)}${audioSource === 'computer' ? ' card-source-computer' : ''}"
   role="article"
@@ -159,6 +171,7 @@ function buildCardHTML({ text, speakerId, speakerLabel, tone, speakerColor, conf
 >
   ${displayText}
   ${sourceBadge}
+  ${translationBlock}
   <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
   <span class="card-meta" aria-hidden="true">${escapeHTML(speakerLabel)} · ${escapeHTML(timeLabel)}${profileMatchLevel === 'low' ? ' · new cluster?' : profileMatchLevel === 'medium' ? ' · match uncertain' : ''}</span>
 </article>`;
@@ -181,7 +194,7 @@ const escapeAttr = escapeHTML;
 // ── Chat route handler ────────────────────────────────────────────────────────
 
 async function handleAddChatMsg(request) {
-  let text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, audioSource;
+  let text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, audioSource, translatedText, translationLang, translationsJson;
   try {
     const body = await request.formData();
     text              = body.get('text')              ?? '';
@@ -192,6 +205,9 @@ async function handleAddChatMsg(request) {
     timestamp         = body.get('timestamp')         ?? new Date().toISOString();
     profileMatchLevel = body.get('profileMatchLevel') ?? 'high';
     audioSource       = body.get('audioSource')       ?? 'mic';
+    translatedText    = body.get('translatedText')    ?? '';
+    translationLang   = body.get('translationLang')   ?? '';
+    translationsJson  = body.get('translationsJson')  ?? '[]';
   } catch {
     return new Response('Bad request', { status: 400 });
   }
@@ -201,9 +217,15 @@ async function handleAddChatMsg(request) {
   if (!/^#[0-9a-fA-F]{6}$/.test(String(speakerColor))) speakerColor = '#4dabf7';
   if (!['high', 'medium', 'low'].includes(String(profileMatchLevel))) profileMatchLevel = 'high';
   if (!['mic', 'computer'].includes(String(audioSource))) audioSource = 'mic';
+  if (!/^[a-z]{0,8}$/.test(String(translationLang))) translationLang = '';
+
+  let translations = parseTranslationsJson(translationsJson);
+  if (!translations.length && translatedText) {
+    translations = [{ lang: translationLang, text: translatedText }];
+  }
 
   const creatureIndex = Math.max(0, (parseInt(String(speakerId).replace('s', ''), 10) || 1) - 1) % CREATURE_SVGS.length;
-  const html = buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource });
+  const html = buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource, translations });
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
@@ -212,7 +234,7 @@ async function handleAddChatMsg(request) {
 
 // ── Chat HTML builder ─────────────────────────────────────────────────────────
 
-function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource = 'mic' }) {
+function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confidence, timestamp, profileMatchLevel, creatureIndex, audioSource = 'mic', translations = [] }) {
   const timeLabel = new Date(timestamp).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
@@ -250,10 +272,39 @@ function buildChatMsgHTML({ text, speakerId, speakerLabel, speakerColor, confide
   <div class="chat-content">
     <span class="chat-speaker">${escapeHTML(speakerLabel)}${sourceBadge}</span>
     <div class="chat-bubble" style="background:${bgColor};border:1px solid ${bordColor}">${displayText}</div>
+    ${renderTranslationBlocks(translations)}
     <span class="confidence-meter" aria-hidden="true"><span class="confidence-fill" style="width:${confidencePct}%"></span><span class="confidence-value">${confidencePct}%</span></span>
     <span class="chat-time">${escapeHTML(timeLabel)}${escapeHTML(matchNote)}</span>
   </div>
 </div>`;
+}
+
+function parseTranslationsJson(raw) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .slice(0, 2)
+      .map((item) => ({
+        lang: String(item?.lang || '').toLowerCase(),
+        text: String(item?.text || '').trim(),
+      }))
+      .filter((item) => item.text && /^[a-z]{0,8}$/.test(item.lang));
+  } catch {
+    return [];
+  }
+}
+
+function renderTranslationBlocks(translations) {
+  if (!Array.isArray(translations) || !translations.length) return '';
+  return translations
+    .map(({ lang, text }) => {
+      const langTag = lang ? `<span class="translation-lang-tag" aria-hidden="true">${escapeHTML(lang.toUpperCase())}</span>` : '';
+      const langAttr = lang ? ` lang="${escapeAttr(lang)}"` : '';
+      return `<span class="translation-text"${langAttr} aria-label="Translation">${langTag}${escapeHTML(text)}</span>`;
+    })
+    .join('');
 }
 
 // ── Colour helpers ────────────────────────────────────────────────────────────

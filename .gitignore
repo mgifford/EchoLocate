@@ -1,3 +1,7 @@
+# Reference forks (local only, not part of the project)
+live-caption-fork/
+live-caption-fork.zip
+
 # macOS / Windows noise
 .DS_Store
 Thumbs.db

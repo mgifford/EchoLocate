@@ -737,6 +737,136 @@ body {
   color: var(--text-muted);
 }
 
+/* Translation block — shown inline below the original transcript text */
+.translation-text {
+  display: block;
+  margin-top: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--text-muted);
+  border-left: 2px solid rgba(77, 171, 247, 0.5);
+  border-radius: 0 4px 4px 0;
+  background: rgba(77, 171, 247, 0.07);
+  line-height: 1.45;
+}
+
+.translation-lang-tag {
+  display: inline-block;
+  margin-right: 0.4rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+[data-theme="light"] .translation-text {
+  color: #4a6080;
+  border-left-color: rgba(30, 100, 200, 0.4);
+  background: rgba(30, 100, 200, 0.06);
+}
+
+/* Translation status pill shown in the options panel */
+.translation-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  padding: 0.22rem 0.6rem;
+  white-space: nowrap;
+}
+
+.translation-status.hidden { display: none; }
+
+.translation-status--available {
+  color: #37b24d;
+  border: 1px solid rgba(55, 178, 77, 0.45);
+  background: rgba(55, 178, 77, 0.1);
+}
+
+.translation-status--downloading,
+.translation-status--checking {
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.translation-status--unavailable,
+.translation-status--unsupported {
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  opacity: 0.75;
+}
+
+[data-theme="light"] .translation-status--available {
+  color: #2a7c3a;
+  background: rgba(55, 178, 77, 0.12);
+}
+
+.translation-controls {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  flex-direction: column;
+  flex-wrap: wrap;
+}
+
+.translation-enable-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.translation-enable-label input[type="checkbox"] {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.translation-help {
+  margin: 0;
+  max-width: 45ch;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.translation-targets {
+  margin: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem 0.5rem;
+  min-width: 245px;
+}
+
+.translation-targets legend {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  padding: 0 0.35rem;
+}
+
+.translation-target-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.28rem 0.5rem;
+}
+
+.translation-target-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.33rem;
+  font-size: 0.74rem;
+  color: var(--text-primary);
+}
+
+.translation-selection-note {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--warning);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    INTERIM STRIP — live, in-progress speech
    ═══════════════════════════════════════════════════════════════════════════ */

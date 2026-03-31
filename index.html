@@ -133,6 +133,23 @@
         <label class="lang-picker-label" for="lang-select">Language</label>
         <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
 
+        <div class="translation-controls" id="translation-controls" aria-label="Translation controls">
+          <label class="translation-enable-label" for="translation-enabled-toggle">
+            <input id="translation-enabled-toggle" type="checkbox" />
+            <span>Enable translation</span>
+          </label>
+
+          <p id="translation-config-help" class="translation-help hidden" role="note"></p>
+
+          <fieldset id="translation-targets-fieldset" class="translation-targets" disabled>
+            <legend>Translate captions into (choose up to 2)</legend>
+            <div id="translation-target-list" class="translation-target-list" role="group" aria-label="Translation target languages"></div>
+          </fieldset>
+
+          <p id="translation-selection-note" class="translation-selection-note hidden" aria-live="polite"></p>
+          <span id="translation-status" class="translation-status hidden" aria-live="polite"></span>
+        </div>
+
         <span class="source-picker-wrapper">
           <label class="lang-picker-label" for="audio-source-select">Audio In</label>
           <select id="audio-source-select" class="lang-select source-select" aria-label="Audio input device"></select>

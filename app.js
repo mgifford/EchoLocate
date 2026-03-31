@@ -45,6 +45,32 @@ const API = Object.freeze({
 });
 
 const DEFAULT_RECOGNITION_LANG = '';
+const TRANSLATION_MAX_TARGETS = 2;
+
+const DEFAULT_TRANSLATION_TARGETS = Object.freeze([
+  { code: 'ar', label: 'Arabic', flag: '🇸🇦' },
+  { code: 'zh', label: 'Chinese (Simplified)', flag: '🇨🇳' },
+  { code: 'cs', label: 'Czech', flag: '🇨🇿' },
+  { code: 'da', label: 'Danish', flag: '🇩🇰' },
+  { code: 'nl', label: 'Dutch', flag: '🇳🇱' },
+  { code: 'fi', label: 'Finnish', flag: '🇫🇮' },
+  { code: 'fr', label: 'French', flag: '🇫🇷' },
+  { code: 'de', label: 'German', flag: '🇩🇪' },
+  { code: 'hi', label: 'Hindi', flag: '🇮🇳' },
+  { code: 'hu', label: 'Hungarian', flag: '🇭🇺' },
+  { code: 'it', label: 'Italian', flag: '🇮🇹' },
+  { code: 'ja', label: 'Japanese', flag: '🇯🇵' },
+  { code: 'ko', label: 'Korean', flag: '🇰🇷' },
+  { code: 'no', label: 'Norwegian', flag: '🇳🇴' },
+  { code: 'pl', label: 'Polish', flag: '🇵🇱' },
+  { code: 'pt', label: 'Portuguese', flag: '🇵🇹' },
+  { code: 'ro', label: 'Romanian', flag: '🇷🇴' },
+  { code: 'ru', label: 'Russian', flag: '🇷🇺' },
+  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
+  { code: 'sv', label: 'Swedish', flag: '🇸🇪' },
+  { code: 'tr', label: 'Turkish', flag: '🇹🇷' },
+  { code: 'uk', label: 'Ukrainian', flag: '🇺🇦' },
+]);
 
 const LANGUAGE_OPTIONS = [
   { code: '', label: 'None (Auto)', flag: '🌐' },
@@ -93,6 +119,21 @@ const ISO3_TO_BCP47 = {
   vie: 'vi-VN', ind: 'id-ID', msa: 'ms-MY', jpn: 'ja-JP', kor: 'ko-KR', cmn: 'cmn-Hans-CN',
 };
 
+function loadTranslationTargets() {
+  try {
+    const raw = localStorage.getItem('echolocate-translation-targets');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((code) => String(code || '').toLowerCase())
+      .filter((code) => /^[a-z]{2,8}$/.test(code))
+      .slice(0, TRANSLATION_MAX_TARGETS);
+  } catch {
+    return [];
+  }
+}
+
 const State = {
   isRunning:                 false,
   pitchHistory:              [],
@@ -133,9 +174,200 @@ const State = {
   systemAudioSamples:        [], // RMS energy samples during current utterance
   micEnergySamples:          [], // mic RMS samples for source comparison
   speechSupported:           true, // set to false by checkBrowserSupport() when API is absent
+  // Translation
+  translationEnabled:        localStorage.getItem('echolocate-translation-enabled') === '1',
+  translationTargets:        loadTranslationTargets(),
+  translationCapability:     'checking', // checking | supported | unsupported
+  translatorStatus:          'idle', // idle | checking | available | downloading | unavailable | unsupported
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
+
+// ── Browser-based translation (Chrome Built-in AI Translator API) ─────────────
+// Translation is progressive enhancement and off by default.
+const Translation = {
+  _cache: new Map(), // key: "source:target" -> Translator instance
+
+  isSupported() {
+    return !!(window.Translator && typeof window.Translator.availability === 'function' && typeof window.Translator.create === 'function');
+  },
+
+  setStatus(text, statusClass = 'checking') {
+    const statusEl = document.getElementById('translation-status');
+    if (!statusEl) return;
+    if (!text) {
+      statusEl.textContent = '';
+      statusEl.className = 'translation-status hidden';
+      return;
+    }
+    statusEl.textContent = text;
+    statusEl.className = `translation-status translation-status--${statusClass}`;
+  },
+
+  sourceFromTag(tag) {
+    const normalized = String(tag || '').trim();
+    if (!normalized) return 'en';
+    return normalized.toLowerCase().split('-')[0];
+  },
+
+  async ensurePair(source, target) {
+    const pairKey = `${source}:${target}`;
+    if (this._cache.has(pairKey)) return this._cache.get(pairKey);
+
+    const availability = await window.Translator.availability({ sourceLanguage: source, targetLanguage: target });
+    if (availability === 'unavailable') {
+      State.translatorStatus = 'unavailable';
+      this.setStatus(`Translation unavailable for ${source.toUpperCase()} → ${target.toUpperCase()}`, 'unavailable');
+      return null;
+    }
+
+    State.translatorStatus = availability === 'readily' ? 'checking' : 'downloading';
+    this.setStatus(
+      availability === 'readily'
+        ? `Initializing ${source.toUpperCase()} → ${target.toUpperCase()}...`
+        : `Downloading model for ${source.toUpperCase()} → ${target.toUpperCase()}...`,
+      'downloading'
+    );
+
+    const statusEl = document.getElementById('translation-status');
+    const translator = await window.Translator.create({
+      sourceLanguage: source,
+      targetLanguage: target,
+      monitor(monitorable) {
+        monitorable.addEventListener('downloadprogress', (event) => {
+          if (!statusEl || !event.total) return;
+          const pct = Math.round((event.loaded / event.total) * 100);
+          statusEl.textContent = `Downloading model for ${source.toUpperCase()} → ${target.toUpperCase()}... ${pct}%`;
+        });
+      },
+    });
+
+    this._cache.set(pairKey, translator);
+    State.translatorStatus = 'available';
+    return translator;
+  },
+
+  async translateToTargets(text, sourceTag, targets) {
+    if (!text || !this.isSupported()) return [];
+    const source = this.sourceFromTag(sourceTag || State.recognitionLang || 'en');
+    const cleanTargets = Array.isArray(targets)
+      ? targets.map((code) => String(code || '').toLowerCase()).filter((code) => /^[a-z]{2,8}$/.test(code)).slice(0, TRANSLATION_MAX_TARGETS)
+      : [];
+
+    if (!cleanTargets.length) return [];
+    const translations = [];
+
+    for (const target of cleanTargets) {
+      if (target === source) continue;
+      try {
+        const translator = await this.ensurePair(source, target);
+        if (!translator) continue;
+        const translated = await translator.translate(text);
+        if (translated && translated.trim()) {
+          translations.push({ lang: target, text: translated.trim() });
+        }
+      } catch (err) {
+        console.warn(`[EchoLocate] Translation error (${source}->${target}):`, err);
+      }
+    }
+
+    if (translations.length) {
+      this.setStatus(`Translating from ${source.toUpperCase()} into ${translations.map((item) => item.lang.toUpperCase()).join(', ')}`, 'available');
+    }
+    return translations;
+  },
+};
+
+// ── Translation controls (opt-in + checklist, max 2 targets) ─────────────────
+async function initTranslationControls() {
+  const toggle = document.getElementById('translation-enabled-toggle');
+  const fieldset = document.getElementById('translation-targets-fieldset');
+  const list = document.getElementById('translation-target-list');
+  const note = document.getElementById('translation-selection-note');
+  const help = document.getElementById('translation-config-help');
+
+  if (!toggle || !fieldset || !list || !note || !help) return;
+
+  State.translationCapability = Translation.isSupported() ? 'supported' : 'unsupported';
+
+  if (State.translationCapability === 'unsupported') {
+    State.translationEnabled = false;
+    localStorage.setItem('echolocate-translation-enabled', '0');
+    help.classList.remove('hidden');
+    help.textContent = 'Translation API not available in this browser. Use current Chrome/Chromium and enable built-in AI translation features in browser settings, then reload.';
+    Translation.setStatus('Translation unavailable in this browser', 'unsupported');
+  } else {
+    help.classList.remove('hidden');
+    help.textContent = 'Translation is available. It remains off until enabled. First use may download a local model.';
+    Translation.setStatus('', 'checking');
+  }
+
+  list.innerHTML = '';
+  for (const lang of DEFAULT_TRANSLATION_TARGETS) {
+    const id = `translation-target-${lang.code}`;
+    const wrapper = document.createElement('label');
+    wrapper.className = 'translation-target-option';
+    wrapper.setAttribute('for', id);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = id;
+    checkbox.value = lang.code;
+    checkbox.checked = State.translationTargets.includes(lang.code);
+
+    const label = document.createElement('span');
+    label.textContent = `${lang.flag} ${lang.label}`;
+
+    wrapper.appendChild(checkbox);
+    wrapper.appendChild(label);
+    list.appendChild(wrapper);
+
+    checkbox.addEventListener('change', () => {
+      const selected = Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+      if (selected.length > TRANSLATION_MAX_TARGETS) {
+        checkbox.checked = false;
+        note.textContent = `You can select up to ${TRANSLATION_MAX_TARGETS} target languages.`;
+        note.classList.remove('hidden');
+        return;
+      }
+      note.classList.add('hidden');
+      State.translationTargets = selected;
+      localStorage.setItem('echolocate-translation-targets', JSON.stringify(selected));
+      Translation._cache.clear();
+    });
+  }
+
+  // Guard against stale persisted values.
+  const selectedNow = Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+  State.translationTargets = selectedNow.slice(0, TRANSLATION_MAX_TARGETS);
+  localStorage.setItem('echolocate-translation-targets', JSON.stringify(State.translationTargets));
+
+  toggle.checked = State.translationEnabled && State.translationCapability === 'supported';
+
+  const syncEnabledState = () => {
+    const enabled = !!toggle.checked && State.translationCapability === 'supported';
+    State.translationEnabled = enabled;
+    localStorage.setItem('echolocate-translation-enabled', enabled ? '1' : '0');
+    fieldset.disabled = !enabled;
+    if (!enabled) {
+      Translation.setStatus('', 'checking');
+      return;
+    }
+    if (!State.translationTargets.length) {
+      note.textContent = 'Select at least one target language to translate.';
+      note.classList.remove('hidden');
+      Translation.setStatus('Translation enabled (choose target language)', 'checking');
+      return;
+    }
+    note.classList.add('hidden');
+    Translation.setStatus('Translation enabled', 'available');
+  };
+
+  toggle.disabled = State.translationCapability !== 'supported';
+  syncEnabledState();
+
+  toggle.addEventListener('change', syncEnabledState);
+}
 
 function checkSecureContext() {
   if (!window.isSecureContext) {
@@ -1344,6 +1576,9 @@ async function postCard(cardData) {
         timestamp: cardData.timestamp,
         profileMatchLevel: cardData.profileMatchLevel || 'high',
         audioSource: cardData.audioSource || 'mic',
+        translatedText: cardData.translatedText || '',
+        translationLang: cardData.translationLang || '',
+        translationsJson: JSON.stringify(cardData.translations || []),
       },
     });
     console.log('[EchoLocate] Card rendered in', target);
@@ -1372,6 +1607,9 @@ async function postChatMsg(cardData) {
       timestamp:         cardData.timestamp,
       profileMatchLevel: cardData.profileMatchLevel || 'high',
       audioSource:       cardData.audioSource || 'mic',
+      translatedText:    cardData.translatedText || '',
+      translationLang:   cardData.translationLang || '',
+      translationsJson:  JSON.stringify(cardData.translations || []),
     },
   });
   feed.scrollTop = feed.scrollHeight;
@@ -1451,6 +1689,15 @@ const TranscriptCtrl = {
       rightEnergy,
       balance,
     });
+
+    const sourceLang = detectedLang || State.recognitionLang || 'en';
+    const translations = (State.translationEnabled && State.translationCapability === 'supported')
+      ? await Translation.translateToTargets(text, sourceLang, State.translationTargets)
+      : [];
+
+    cardData.translations = translations;
+    cardData.translatedText = translations[0]?.text || '';
+    cardData.translationLang = translations[0]?.lang || '';
 
     this.clearInterim();
 
@@ -2251,6 +2498,7 @@ async function boot() {
 
   await initLanguageSelector();
   await initLanguageDetection();
+  await initTranslationControls();
   initViewToggle();
   initNavOptions();
   await initAudioDeviceSelector();
