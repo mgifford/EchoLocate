@@ -564,13 +564,13 @@ body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  font-size: 0.75rem;
+  gap: 0.4rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.085em;
   color: var(--text-muted);
-  margin-bottom: 0.875rem;
+  margin-bottom: 0.72rem;
   flex-shrink: 0;
 }
 
@@ -584,20 +584,20 @@ body {
 
 .lane-hint {
   margin-left: auto;
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   font-weight: 400;
-  color: #626262;
+  color: #8a9097;
   text-transform: none;
   letter-spacing: 0;
 }
 
 .lane-language {
-  margin-left: 0.45rem;
-  font-size: 0.66rem;
+  margin-left: 0.2rem;
+  font-size: 0.63rem;
   font-weight: 600;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
-  padding: 0.1rem 0.45rem;
+  padding: 0.08rem 0.38rem;
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.04);
 }
@@ -610,8 +610,8 @@ body {
 .lane-translation-controls {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  margin-left: 0.4rem;
+  gap: 0.28rem;
+  margin-left: 0.2rem;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 500;
@@ -619,14 +619,14 @@ body {
 
 .lane-trans-mode,
 .lane-trans-target {
-  height: 24px;
+  height: 22px;
   border-radius: 6px;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-primary);
   font-family: var(--font);
-  font-size: 0.66rem;
-  padding: 0 0.3rem;
+  font-size: 0.63rem;
+  padding: 0 0.26rem;
 }
 
 .lane-trans-targets {
@@ -635,12 +635,30 @@ body {
 }
 
 .lane-trans-summary {
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   color: var(--text-muted);
-  max-width: 10rem;
+  max-width: 8.2rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+[data-theme="light"] .lane-hint,
+[data-theme="light"] .lane-trans-summary {
+  color: #5f6775;
+}
+
+[data-theme="light"] .lane-language {
+  color: #2b3240;
+  border-color: #d7dbe0;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="light"] .lane-trans-mode,
+[data-theme="light"] .lane-trans-target {
+  color: #243044;
+  border-color: #d0d6de;
+  background: #f8f9fb;
 }
 
 .lane-confidence {
