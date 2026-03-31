@@ -484,6 +484,10 @@ async function initTranslationControls() {
   function openDropdown() {
     dropdown.classList.remove('hidden');
     langBtn.setAttribute('aria-expanded', 'true');
+    // Move keyboard focus into the menu so users can immediately choose targets.
+    const firstFocusable = dropdown.querySelector('input[type="checkbox"]:checked')
+      || dropdown.querySelector('input[type="checkbox"]');
+    if (firstFocusable) firstFocusable.focus();
   }
   function closeDropdown() {
     dropdown.classList.add('hidden');
