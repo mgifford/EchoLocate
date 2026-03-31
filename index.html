@@ -48,14 +48,19 @@
 
   <div id="speech-warning" class="hidden" role="alert" aria-live="assertive" aria-atomic="true">
     <strong>⚠ Web Speech API not supported</strong> — This browser cannot run live transcription here.
-    Try current <strong>Chrome</strong> or <strong>Edge</strong>.
+    Try <strong>Google Chrome</strong> for the best experience.
+    Microsoft Edge also supports it, but requires
+    <strong>Use online speech recognition</strong> to be enabled in Edge settings.
   </div>
 
   <div id="edge-speech-warning" class="hidden" role="alert" aria-live="assertive" aria-atomic="true">
     <strong>⚠ Edge speech recognition blocked</strong> —
-    Go to <strong>edge://settings/privacy</strong> → Services → enable
-    <strong>"Use online speech recognition"</strong>, then try again.
-    Also blocked in InPrivate windows.
+    Edge requires online speech processing to be enabled.
+    Open <strong>Edge Settings</strong> → <strong>Privacy, search, and services</strong> → scroll to
+    <strong>Services</strong> → turn on <strong>Use online speech recognition</strong>.
+    If that option is missing, a browser or organization policy may be blocking it —
+    contact your IT administrator, or switch to <strong>Google Chrome</strong>.
+    Speech recognition is also blocked in <strong>InPrivate</strong> windows.
   </div>
 
   <header class="app-header" role="banner">
@@ -176,14 +181,28 @@
           aria-relevant="additions"></div>
 
         <section id="empty-stage" class="empty-stage hidden" role="status" aria-live="polite">
-          <h2>Welcome to EchoLocate</h2>
-          <p>
-            Press Start and begin talking. Have a conversation and watch how voices are grouped.
-            How accurate is it? Can you switch to another language? Try that too.
-          </p>
-          <p>
-            EchoLocate is open source and privacy-first, built so everyone can stand on the shoulders of giants.
-          </p>
+          <div id="empty-stage-welcome">
+            <h2>Welcome to EchoLocate</h2>
+            <p>
+              Press Start and begin talking. Have a conversation and watch how voices are grouped.
+              How accurate is it? Can you switch to another language? Try that too.
+            </p>
+            <p>
+              EchoLocate is open source and privacy-first, built so everyone can stand on the shoulders of giants.
+            </p>
+          </div>
+          <div id="empty-stage-unsupported" class="hidden">
+            <h2>Speech Recognition Not Available</h2>
+            <p>
+              Your browser does not support the Web Speech API required for live transcription.
+            </p>
+            <p>
+              For best results, use <strong>Google Chrome</strong>.
+              Microsoft Edge also supports it, but may require
+              <strong>Use online speech recognition</strong> to be enabled in
+              <strong>Edge Settings → Privacy, search, and services → Services</strong>.
+            </p>
+          </div>
         </section>
 
         <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->

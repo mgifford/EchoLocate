@@ -132,6 +132,7 @@ const State = {
   systemAudioAnalyser:       null,
   systemAudioSamples:        [], // RMS energy samples during current utterance
   micEnergySamples:          [], // mic RMS samples for source comparison
+  speechSupported:           true, // set to false by checkBrowserSupport() when API is absent
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
@@ -151,8 +152,19 @@ function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SR) return true;
 
+  State.speechSupported = false;
+
   const warning = document.getElementById('speech-warning');
   if (warning) warning.classList.remove('hidden');
+
+  // Switch the welcome screen to the "unsupported" message so the user is
+  // not told to press Start in a browser where it will never work.
+  const welcomeContent = document.getElementById('empty-stage-welcome');
+  const unsupportedContent = document.getElementById('empty-stage-unsupported');
+  if (welcomeContent) welcomeContent.classList.add('hidden');
+  if (unsupportedContent) unsupportedContent.classList.remove('hidden');
+  const stage = document.getElementById('empty-stage');
+  if (stage) stage.classList.remove('hidden');
 
   const start = document.getElementById('btn-start');
   const stop = document.getElementById('btn-stop');
@@ -526,6 +538,12 @@ async function mergeProfiles(fromId, intoId) {
 function updateEmptyStage() {
   const panel = document.getElementById('empty-stage');
   if (!panel) return;
+  // When speech recognition is unavailable, keep the panel visible so the
+  // "not supported" message remains visible even if there are stored cards.
+  if (!State.speechSupported) {
+    panel.classList.remove('hidden');
+    return;
+  }
   const count = Storage.allCards().length;
   panel.classList.toggle('hidden', State.isRunning || count > 0);
 }
