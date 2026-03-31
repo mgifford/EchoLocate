@@ -629,6 +629,13 @@ body {
   padding: 0 0.26rem;
 }
 
+.lane-trans-mode:focus-visible,
+.lane-trans-target:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: 1px;
+  border-color: color-mix(in srgb, var(--accent-a) 60%, var(--border-subtle));
+}
+
 .lane-trans-targets {
   display: inline-flex;
   gap: 0.25rem;
@@ -903,6 +910,11 @@ body {
   white-space: nowrap;
 }
 
+.translation-lang-btn:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: 2px;
+}
+
 /* Dropdown panel — positioned absolute relative to .translation-controls */
 .translation-lang-dropdown {
   position: absolute;
@@ -942,6 +954,17 @@ body {
   font-size: 0.74rem;
   color: var(--text-primary);
   cursor: pointer;
+  border-radius: 6px;
+  padding: 0.12rem 0.18rem;
+}
+
+.translation-target-option input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: 2px;
+}
+
+.translation-target-option:focus-within {
+  background: color-mix(in srgb, var(--accent-a) 14%, transparent);
 }
 
 .translation-selection-note {
