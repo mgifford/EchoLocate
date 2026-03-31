@@ -142,6 +142,11 @@ function checkSecureContext() {
   }
 }
 
+function isEdgeBrowser() {
+  // Detect Chromium-based Edge (not legacy EdgeHTML / "Edge" 18 and earlier).
+  return /Edg\//.test(navigator.userAgent);
+}
+
 function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SR) return true;
@@ -1407,9 +1412,17 @@ const SpeechEngine = {
         const maxRetries = navigator.onLine ? CFG.NETWORK_ONLINE_MAX_RETRIES : CFG.NETWORK_MAX_RETRIES;
         if (this._networkRetryCount > maxRetries) {
           console.error('[EchoLocate] Network errors exceeded retry limit — stopping');
-          const msg = navigator.onLine
-            ? 'Speech recognition blocked — if in a private/incognito window, try a regular one'
-            : 'Network unavailable — press Start to retry';
+          let msg;
+          if (navigator.onLine) {
+            if (isEdgeBrowser()) {
+              document.getElementById('edge-speech-warning')?.classList.remove('hidden');
+              msg = 'Edge speech recognition blocked — see the notice above';
+            } else {
+              msg = 'Speech recognition blocked — if in a private/incognito window, try a regular one';
+            }
+          } else {
+            msg = 'Network unavailable — press Start to retry';
+          }
           setStatus('error', msg);
           State.isRunning = false;
           return;
@@ -1473,6 +1486,12 @@ const SpeechEngine = {
   },
 
   _rawStart() {
+    // Re-create the SpeechRecognition object before each retry after a network
+    // error.  Edge (and some other Chromium builds) can enter a broken state
+    // after a failed network connection; a fresh instance recovers it.
+    if (this._networkRetryCount > 0) {
+      this.init();
+    }
     try {
       this._rec.start();
     } catch (err) {
@@ -1491,6 +1510,9 @@ const SpeechEngine = {
       return;
     }
     State.isRunning = true;
+
+    // Hide any browser-specific warning banners on each new start attempt.
+    document.getElementById('edge-speech-warning')?.classList.add('hidden');
 
     // Default to English when no language is explicitly chosen.
     if (!State.recognitionLang) {

@@ -153,7 +153,8 @@ body {
 #secure-warning strong { font-weight: 700; }
 #secure-warning code   { font-family: monospace; opacity: 0.8; }
 
-#speech-warning {
+#speech-warning,
+#edge-speech-warning {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -168,7 +169,8 @@ body {
   z-index: 100;
 }
 
-[data-theme="light"] #speech-warning {
+[data-theme="light"] #speech-warning,
+[data-theme="light"] #edge-speech-warning {
   background: #fff2f2;
   color: #a61e1e;
 }
