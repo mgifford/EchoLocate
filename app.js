@@ -129,6 +129,11 @@ function normalizeTranslationTargets(input) {
   )].slice(0, TRANSLATION_MAX_TARGETS);
 }
 
+function parseMaxSpeakers(raw) {
+  const n = parseInt(raw || '', 10);
+  return Math.min(CFG.MAX_SPEAKERS, Math.max(1, isNaN(n) ? CFG.MAX_SPEAKERS : n));
+}
+
 function loadTranslationTargets() {
   try {
     const raw = localStorage.getItem('echolocate-translation-targets');
@@ -250,6 +255,7 @@ const State = {
   systemAudioSamples:        [], // RMS energy samples during current utterance
   micEnergySamples:          [], // mic RMS samples for source comparison
   speechSupported:           true, // set to false by checkBrowserSupport() when API is absent
+  maxSpeakers:               parseMaxSpeakers(localStorage.getItem('echolocate-max-speakers')),
   // Translation
   translationEnabled:        localStorage.getItem('echolocate-translation-enabled') === '1',
   translationTargets:        loadTranslationTargets(),
@@ -1709,7 +1715,7 @@ function resolveSpeakerProfile(metrics) {
     bestSimilarity = smoothed.similarity;
   }
 
-  const shouldAttach = best && (bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY || State.profiles.length >= CFG.MAX_SPEAKERS);
+  const shouldAttach = best && (bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY || State.profiles.length >= State.maxSpeakers);
   if (shouldAttach) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
     best.tone = tone;
@@ -2615,6 +2621,17 @@ async function restoreSession() {
   updateEmptyStage();
 }
 
+function initSpeakerLimitControl() {
+  const select = document.getElementById('max-speakers-select');
+  if (!select) return;
+  select.value = String(State.maxSpeakers);
+  select.addEventListener('change', () => {
+    const val = parseMaxSpeakers(select.value);
+    State.maxSpeakers = val;
+    localStorage.setItem('echolocate-max-speakers', String(val));
+  });
+}
+
 function initNavOptions() {
   const toggleBtn = document.getElementById('nav-options-toggle');
   const panel = document.getElementById('nav-options-panel');
@@ -2795,6 +2812,7 @@ async function boot() {
   initViewToggle();
   initNavOptions();
   await initAudioDeviceSelector();
+  initSpeakerLimitControl();
 
   await registerServiceWorker();
   TranscriptCtrl.init();
