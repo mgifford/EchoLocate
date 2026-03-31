@@ -563,6 +563,7 @@ body {
 .lane-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   font-size: 0.75rem;
   font-weight: 700;
@@ -1204,6 +1205,55 @@ body {
   .controls { gap: 0.35rem; }
   .btn      { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
 
+  /* Keep lane header controls compact and readable on phones. */
+  .lane {
+    padding: 0.85rem 0.8rem 0.45rem;
+  }
+
+  .lane-header {
+    gap: 0.34rem 0.45rem;
+    font-size: 0.67rem;
+    margin-bottom: 0.62rem;
+    letter-spacing: 0.075em;
+  }
+
+  .lane-language {
+    margin-left: 0;
+    font-size: 0.61rem;
+    padding: 0.08rem 0.35rem;
+  }
+
+  .lane-translation-controls {
+    margin-left: 0;
+    flex: 1 1 100%;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .lane-trans-mode,
+  .lane-trans-target {
+    height: 22px;
+    font-size: 0.62rem;
+    padding: 0 0.24rem;
+    max-width: 6.3rem;
+  }
+
+  .lane-trans-targets {
+    flex-wrap: wrap;
+  }
+
+  .lane-trans-summary {
+    display: none;
+  }
+
+  .lane-hint {
+    margin-left: 0;
+    width: 100%;
+    order: 3;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+  }
+
   /* Hide verbose status text on small screens; the dot alone is sufficient. */
   .mic-status { display: none; }
   .mic-info   { display: none; }
@@ -1229,6 +1279,30 @@ body {
     font-size: 0.68rem;
     padding: 0.2rem 0.75rem 0.45rem;
   }
+
+  .lane {
+    padding: 0.75rem 0.68rem 0.42rem;
+  }
+
+  .lane-header {
+    gap: 0.28rem 0.35rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+  }
+
+  .lane-trans-mode {
+    max-width: 5.1rem;
+  }
+
+  .lane-trans-targets {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .lane-trans-target {
+    max-width: 5.8rem;
+  }
+
   .debug-overlay {
     display: none !important;
   }
