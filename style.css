@@ -606,6 +606,42 @@ body {
   color: var(--warning);
 }
 
+.lane-translation-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.4rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+.lane-trans-mode,
+.lane-trans-target {
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.66rem;
+  padding: 0 0.3rem;
+}
+
+.lane-trans-targets {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.lane-trans-summary {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  max-width: 10rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .lane-confidence {
   margin-left: 0.55rem;
   font-size: 0.58rem;

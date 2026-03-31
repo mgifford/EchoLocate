@@ -119,6 +119,16 @@ const ISO3_TO_BCP47 = {
   vie: 'vi-VN', ind: 'id-ID', msa: 'ms-MY', jpn: 'ja-JP', kor: 'ko-KR', cmn: 'cmn-Hans-CN',
 };
 
+const SPEAKER_TRANSLATION_PREFS_KEY = 'echolocate-speaker-translation-prefs';
+
+function normalizeTranslationTargets(input) {
+  return [...new Set(
+    (Array.isArray(input) ? input : [])
+      .map((code) => String(code || '').toLowerCase())
+      .filter((code) => /^[a-z]{2,8}$/.test(code))
+  )].slice(0, TRANSLATION_MAX_TARGETS);
+}
+
 function loadTranslationTargets() {
   try {
     const raw = localStorage.getItem('echolocate-translation-targets');
@@ -132,6 +142,72 @@ function loadTranslationTargets() {
   } catch {
     return [];
   }
+}
+
+function loadSpeakerTranslationPrefs() {
+  try {
+    const raw = localStorage.getItem(SPEAKER_TRANSLATION_PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    const out = {};
+    for (const [speakerId, pref] of Object.entries(parsed)) {
+      if (!/^s\d+$/.test(String(speakerId))) continue;
+      const mode = pref?.mode;
+      if (!['global', 'off', 'custom'].includes(mode)) continue;
+      out[speakerId] = {
+        mode,
+        targets: mode === 'custom' ? normalizeTranslationTargets(pref?.targets) : [],
+      };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function persistSpeakerTranslationPrefs() {
+  try {
+    localStorage.setItem(SPEAKER_TRANSLATION_PREFS_KEY, JSON.stringify(State.speakerTranslationPrefs));
+  } catch {
+    // Ignore localStorage quota errors.
+  }
+}
+
+function getSpeakerTranslationPref(profileId) {
+  const pref = State.speakerTranslationPrefs[profileId];
+  if (!pref || !['global', 'off', 'custom'].includes(pref.mode)) {
+    return { mode: 'global', targets: [] };
+  }
+  return {
+    mode: pref.mode,
+    targets: pref.mode === 'custom' ? normalizeTranslationTargets(pref.targets) : [],
+  };
+}
+
+function setSpeakerTranslationPref(profileId, pref) {
+  if (!/^s\d+$/.test(String(profileId))) return;
+  const mode = pref?.mode;
+  if (!['global', 'off', 'custom'].includes(mode)) return;
+  State.speakerTranslationPrefs[profileId] = {
+    mode,
+    targets: mode === 'custom' ? normalizeTranslationTargets(pref?.targets) : [],
+  };
+  persistSpeakerTranslationPrefs();
+}
+
+function removeSpeakerTranslationPref(profileId) {
+  delete State.speakerTranslationPrefs[profileId];
+  persistSpeakerTranslationPrefs();
+}
+
+function getEffectiveTranslationTargetsForProfile(profile) {
+  if (!State.translationEnabled || State.translationCapability !== 'supported' || !profile) return [];
+  const pref = getSpeakerTranslationPref(profile.id);
+  if (pref.mode === 'off') return [];
+  if (pref.mode === 'custom') return normalizeTranslationTargets(pref.targets);
+  return normalizeTranslationTargets(State.translationTargets);
 }
 
 const State = {
@@ -177,6 +253,7 @@ const State = {
   // Translation
   translationEnabled:        localStorage.getItem('echolocate-translation-enabled') === '1',
   translationTargets:        loadTranslationTargets(),
+  speakerTranslationPrefs:   loadSpeakerTranslationPrefs(),
   translationCapability:     'checking', // checking | supported | unsupported
   translatorStatus:          'idle', // idle | checking | available | downloading | unavailable | unsupported
 };
@@ -375,6 +452,7 @@ async function initTranslationControls() {
       localStorage.setItem('echolocate-translation-targets', JSON.stringify(selected));
       Translation._cache.clear();
       updateLangBtnLabel();
+      refreshAllLaneTranslationControls();
 
       if (State.translationEnabled && State.translationCapability === 'supported' && selected.length) {
         const src = Translation.sourceFromTag(State.recognitionLang);
@@ -432,6 +510,7 @@ async function initTranslationControls() {
     const enabled = !!toggle.checked && State.translationCapability === 'supported';
     State.translationEnabled = enabled;
     localStorage.setItem('echolocate-translation-enabled', enabled ? '1' : '0');
+    refreshAllLaneTranslationControls();
 
     if (!enabled) {
       langBtn.hidden = true;
@@ -456,6 +535,7 @@ async function initTranslationControls() {
   syncEnabledState();
   toggle.addEventListener('change', syncEnabledState);
   updateLangBtnLabel();
+  refreshAllLaneTranslationControls();
 }
 
 function checkSecureContext() {
@@ -955,6 +1035,7 @@ async function mergeProfiles(fromId, intoId) {
     };
   });
   Storage.replaceAll(cards);
+  removeSpeakerTranslationPref(fromId);
 
   document.getElementById('lanes-container').innerHTML = '';
   const chatFeed = document.getElementById('chat-feed');
@@ -1362,6 +1443,100 @@ function profileById(id) {
   return State.profiles.find((p) => p.id === id) || null;
 }
 
+function translationCodeLabel(code) {
+  const found = DEFAULT_TRANSLATION_TARGETS.find((lang) => lang.code === code);
+  return found ? `${found.flag} ${found.code.toUpperCase()}` : code.toUpperCase();
+}
+
+function laneTranslationSummary(profile) {
+  const pref = getSpeakerTranslationPref(profile.id);
+  if (!State.translationEnabled || State.translationCapability !== 'supported') {
+    return 'Off';
+  }
+  if (pref.mode === 'off') return 'Off';
+  const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
+  if (!effectiveTargets.length) return 'None';
+  return effectiveTargets.map((code) => translationCodeLabel(code)).join(' · ');
+}
+
+function refreshLaneTranslationControls(profile) {
+  if (!profile?.el) return;
+
+  const modeSel = profile.el.querySelector(`#lane-${profile.id}-trans-mode`);
+  const t1Sel = profile.el.querySelector(`#lane-${profile.id}-trans-t1`);
+  const t2Sel = profile.el.querySelector(`#lane-${profile.id}-trans-t2`);
+  const targetsWrap = profile.el.querySelector(`#lane-${profile.id}-trans-targets`);
+  const summary = profile.el.querySelector(`#lane-${profile.id}-trans-summary`);
+  if (!modeSel || !t1Sel || !t2Sel || !targetsWrap || !summary) return;
+
+  const pref = getSpeakerTranslationPref(profile.id);
+  modeSel.value = pref.mode;
+
+  const targets = pref.mode === 'custom' ? pref.targets : [];
+  t1Sel.value = targets[0] || '';
+  t2Sel.value = targets[1] || '';
+
+  targetsWrap.classList.toggle('hidden', pref.mode !== 'custom');
+  t1Sel.disabled = pref.mode !== 'custom';
+  t2Sel.disabled = pref.mode !== 'custom';
+
+  const globallyDisabled = !State.translationEnabled || State.translationCapability !== 'supported';
+  modeSel.disabled = globallyDisabled;
+  if (globallyDisabled) {
+    targetsWrap.classList.add('hidden');
+    t1Sel.disabled = true;
+    t2Sel.disabled = true;
+  }
+
+  summary.textContent = laneTranslationSummary(profile);
+}
+
+function refreshAllLaneTranslationControls() {
+  for (const profile of State.profiles) {
+    refreshLaneTranslationControls(profile);
+  }
+}
+
+function initLaneTranslationControls(profile) {
+  if (!profile?.el) return;
+  const modeSel = profile.el.querySelector(`#lane-${profile.id}-trans-mode`);
+  const t1Sel = profile.el.querySelector(`#lane-${profile.id}-trans-t1`);
+  const t2Sel = profile.el.querySelector(`#lane-${profile.id}-trans-t2`);
+  if (!modeSel || !t1Sel || !t2Sel) return;
+
+  const applyPref = () => {
+    const mode = modeSel.value;
+    const targets = normalizeTranslationTargets([t1Sel.value, t2Sel.value]);
+
+    if (mode === 'custom' && !targets.length) {
+      const fallback = normalizeTranslationTargets(State.translationTargets);
+      if (fallback.length) {
+        t1Sel.value = fallback[0];
+        t2Sel.value = fallback[1] || '';
+      }
+    }
+
+    setSpeakerTranslationPref(profile.id, {
+      mode,
+      targets: normalizeTranslationTargets([t1Sel.value, t2Sel.value]),
+    });
+
+    refreshLaneTranslationControls(profile);
+
+    const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
+    if (effectiveTargets.length) {
+      const source = Translation.sourceFromTag(profile.languageTag || State.recognitionLang || 'en');
+      Translation.preWarmTranslators(source, effectiveTargets).catch(() => {});
+    }
+  };
+
+  modeSel.addEventListener('change', applyPref);
+  t1Sel.addEventListener('change', applyPref);
+  t2Sel.addEventListener('change', applyPref);
+
+  refreshLaneTranslationControls(profile);
+}
+
 function buildLane(profile) {
   const lane = document.createElement('section');
   lane.className = 'lane';
@@ -1375,6 +1550,24 @@ function buildLane(profile) {
     <span class="lane-dot"></span>
     ${escapeHTML(profile.label)}
     <span class="lane-language" id="lane-${profile.id}-lang">${languageFlag(State.recognitionLang)} ${escapeHTML(languageBadgeText(State.recognitionLang))}</span>
+    <span class="lane-translation-controls" id="lane-${profile.id}-translation-controls">
+      <select id="lane-${profile.id}-trans-mode" class="lane-trans-mode" aria-label="${escapeHTML(profile.label)} translation mode">
+        <option value="global">Global</option>
+        <option value="off">Off</option>
+        <option value="custom">Custom</option>
+      </select>
+      <span class="lane-trans-targets hidden" id="lane-${profile.id}-trans-targets">
+        <select id="lane-${profile.id}-trans-t1" class="lane-trans-target" aria-label="${escapeHTML(profile.label)} target language 1">
+          <option value="">Target 1</option>
+          ${DEFAULT_TRANSLATION_TARGETS.map((lang) => `<option value="${escapeHTML(lang.code)}">${escapeHTML(lang.flag)} ${escapeHTML(lang.label)}</option>`).join('')}
+        </select>
+        <select id="lane-${profile.id}-trans-t2" class="lane-trans-target" aria-label="${escapeHTML(profile.label)} target language 2">
+          <option value="">Target 2</option>
+          ${DEFAULT_TRANSLATION_TARGETS.map((lang) => `<option value="${escapeHTML(lang.code)}">${escapeHTML(lang.flag)} ${escapeHTML(lang.label)}</option>`).join('')}
+        </select>
+      </span>
+      <span class="lane-trans-summary" id="lane-${profile.id}-trans-summary"></span>
+    </span>
     <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
   `;
 
@@ -1388,6 +1581,7 @@ function buildLane(profile) {
 
   profile.el = lane;
   profile.cardsEl = cards;
+  initLaneTranslationControls(profile);
 }
 
 function ensureLane(profile) {
@@ -1780,8 +1974,9 @@ const TranscriptCtrl = {
     });
 
     const sourceLang = detectedLang || State.recognitionLang || 'en';
+    const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
     const translations = (State.translationEnabled && State.translationCapability === 'supported')
-      ? await Translation.translateToTargets(text, sourceLang, State.translationTargets)
+      ? await Translation.translateToTargets(text, sourceLang, effectiveTargets)
       : [];
 
     cardData.translations = translations;
@@ -2403,6 +2598,9 @@ async function restoreSession() {
       stereoLeftEnergy: card.stereoLeftEnergy ?? 0,
       stereoRightEnergy: card.stereoRightEnergy ?? 0,
       audioSource: card.audioSource || 'mic',
+      translations: Array.isArray(card.translations)
+        ? card.translations
+        : (card.translatedText ? [{ lang: card.translationLang || '', text: card.translatedText }] : []),
     };
 
     await postCard(normalized);
@@ -2494,6 +2692,8 @@ function initControls() {
     State.speakerLock = null;
     State.matchHistory = [];
     State.nextSpeakerNum = 1;
+    State.speakerTranslationPrefs = {};
+    persistSpeakerTranslationPrefs();
     State.debugPoints = [];
     updateStereoInfoText();
     renderDebugOverlay();
