@@ -156,8 +156,7 @@ body {
 #secure-warning strong { font-weight: 700; }
 #secure-warning code   { font-family: monospace; opacity: 0.8; }
 
-#speech-warning,
-#edge-speech-warning {
+#speech-warning {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -172,10 +171,109 @@ body {
   z-index: 100;
 }
 
-[data-theme="light"] #speech-warning,
-[data-theme="light"] #edge-speech-warning {
+[data-theme="light"] #speech-warning {
   background: #fff2f2;
   color: #a61e1e;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SPEECH HELP MODAL DIALOG
+   ═══════════════════════════════════════════════════════════════════════════ */
+#speech-help-modal {
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 0;
+  max-width: min(600px, 92vw);
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.65);
+}
+
+#speech-help-modal::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.speech-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+}
+
+.speech-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.speech-modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--danger);
+  margin: 0;
+}
+
+.speech-modal-title.info {
+  color: var(--warning);
+}
+
+.speech-modal-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.2rem 0.5rem;
+  line-height: 1;
+  border-radius: var(--radius-btn);
+}
+
+.speech-modal-close:hover {
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
+}
+
+.speech-modal-body {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+.speech-modal-body p {
+  margin: 0 0 0.75rem;
+}
+
+.speech-modal-body p:last-child {
+  margin-bottom: 0;
+}
+
+.speech-modal-body ol {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.speech-modal-body li {
+  margin: 0.35rem 0;
+}
+
+.speech-modal-body code {
+  background: var(--bg-lane);
+  border: 1px solid var(--border-subtle);
+  padding: 0.15em 0.45em;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.88em;
+  user-select: all;
+}
+
+.speech-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
