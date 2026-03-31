@@ -171,6 +171,18 @@
           <select id="audio-source-select" class="lang-select source-select" aria-label="Audio input device"></select>
         </span>
 
+        <span class="source-picker-wrapper">
+          <label class="lang-picker-label" for="max-speakers-select">Max Speakers</label>
+          <select id="max-speakers-select" class="lang-select max-speakers-select" aria-label="Maximum number of speaker lanes">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </span>
+
         <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
         <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
         <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
