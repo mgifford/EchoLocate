@@ -1274,6 +1274,11 @@ body {
 .chat-feed::-webkit-scrollbar-track { background: transparent; }
 .chat-feed::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
 
+.chat-feed:focus-visible {
+  outline: 2px solid var(--accent-a);
+  outline-offset: -2px;
+}
+
 .empty-stage {
   position: absolute;
   left: 50%;
