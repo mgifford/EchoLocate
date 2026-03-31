@@ -185,148 +185,188 @@ const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc
 
 // ── Browser-based translation (Chrome Built-in AI Translator API) ─────────────
 // Translation is progressive enhancement and off by default.
+// Audio and transcripts stay in the browser; only language models are fetched
+// from Chrome's servers on first use, then cached locally.
 const Translation = {
-  _cache: new Map(), // key: "source:target" -> Translator instance
+  _cache: new Map(), // "source:target" → Translator instance
 
   isSupported() {
-    return !!(window.Translator && typeof window.Translator.availability === 'function' && typeof window.Translator.create === 'function');
+    return !!(
+      window.Translator &&
+      typeof window.Translator.availability === 'function' &&
+      typeof window.Translator.create === 'function'
+    );
   },
 
   setStatus(text, statusClass = 'checking') {
-    const statusEl = document.getElementById('translation-status');
-    if (!statusEl) return;
-    if (!text) {
-      statusEl.textContent = '';
-      statusEl.className = 'translation-status hidden';
-      return;
-    }
-    statusEl.textContent = text;
-    statusEl.className = `translation-status translation-status--${statusClass}`;
+    const el = document.getElementById('translation-status');
+    if (!el) return;
+    if (!text) { el.textContent = ''; el.className = 'translation-status hidden'; return; }
+    el.textContent = text;
+    el.className = `translation-status translation-status--${statusClass}`;
   },
 
   sourceFromTag(tag) {
-    const normalized = String(tag || '').trim();
-    if (!normalized) return 'en';
-    return normalized.toLowerCase().split('-')[0];
+    const s = String(tag || '').trim();
+    return s ? s.toLowerCase().split('-')[0] : 'en';
   },
 
-  async ensurePair(source, target) {
-    const pairKey = `${source}:${target}`;
-    if (this._cache.has(pairKey)) return this._cache.get(pairKey);
+  // ensurePair: get or create a cached Translator instance for one language pair.
+  // Calls the optional onProgress(pct) callback during model download.
+  // Returns null when the pair is unavailable or creation fails.
+  async ensurePair(source, target, { onProgress } = {}) {
+    const key = `${source}:${target}`;
+    if (this._cache.has(key)) return this._cache.get(key);
 
-    const availability = await window.Translator.availability({ sourceLanguage: source, targetLanguage: target });
-    if (availability === 'unavailable') {
-      State.translatorStatus = 'unavailable';
-      this.setStatus(`Translation unavailable for ${source.toUpperCase()} → ${target.toUpperCase()}`, 'unavailable');
+    let availability;
+    try {
+      availability = await window.Translator.availability({ sourceLanguage: source, targetLanguage: target });
+    } catch {
       return null;
     }
+    if (availability === 'unavailable') return null;
 
-    State.translatorStatus = availability === 'readily' ? 'checking' : 'downloading';
+    try {
+      const translator = await window.Translator.create({
+        sourceLanguage: source,
+        targetLanguage: target,
+        monitor(m) {
+          m.addEventListener('downloadprogress', (e) => {
+            if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+          });
+        },
+      });
+      this._cache.set(key, translator);
+      return translator;
+    } catch (err) {
+      console.warn(`[EchoLocate] Translator.create failed (${source}→${target}):`, err);
+      return null;
+    }
+  },
+
+  // preWarmTranslators: kick off ALL selected pair downloads in parallel so
+  // models are ready before the user speaks.  Shows live combined progress.
+  async preWarmTranslators(source, targets) {
+    if (!this.isSupported() || !targets.length) return;
+    const pairs = targets.filter((t) => t !== source);
+    if (!pairs.length) return;
+
+    const progress = Object.fromEntries(pairs.map((t) => [t, 0]));
+
+    const refreshStatus = () => {
+      const allReady = pairs.every((t) => this._cache.has(`${source}:${t}`));
+      if (allReady) return; // final status set below
+      const avg = Math.round(pairs.reduce((s, t) => s + (progress[t] || 0), 0) / pairs.length);
+      const waiting = pairs.filter((t) => !this._cache.has(`${source}:${t}`)).map((t) => t.toUpperCase());
+      this.setStatus(
+        `Downloading translation model${waiting.length > 1 ? 's' : ''} (${waiting.join(' + ')})${avg > 0 ? ` ${avg}%` : ''}… captions continue normally.`,
+        'downloading'
+      );
+    };
+
     this.setStatus(
-      availability === 'readily'
-        ? `Initializing ${source.toUpperCase()} → ${target.toUpperCase()}...`
-        : `Downloading model for ${source.toUpperCase()} → ${target.toUpperCase()}...`,
+      `Preparing translation model${pairs.length > 1 ? 's' : ''} (${pairs.map((t) => t.toUpperCase()).join(' + ')})… captions continue normally.`,
       'downloading'
     );
 
-    const statusEl = document.getElementById('translation-status');
-    const translator = await window.Translator.create({
-      sourceLanguage: source,
-      targetLanguage: target,
-      monitor(monitorable) {
-        monitorable.addEventListener('downloadprogress', (event) => {
-          if (!statusEl || !event.total) return;
-          const pct = Math.round((event.loaded / event.total) * 100);
-          statusEl.textContent = `Downloading model for ${source.toUpperCase()} → ${target.toUpperCase()}... ${pct}%`;
-        });
-      },
-    });
+    await Promise.allSettled(
+      pairs.map((target) =>
+        this.ensurePair(source, target, {
+          onProgress: (pct) => { progress[target] = pct; refreshStatus(); },
+        })
+      )
+    );
 
-    this._cache.set(pairKey, translator);
-    State.translatorStatus = 'available';
-    return translator;
+    const ready = pairs.filter((t) => this._cache.has(`${source}:${t}`));
+    if (ready.length) {
+      State.translatorStatus = 'available';
+      this.setStatus(`Ready: ${ready.map((t) => t.toUpperCase()).join(' + ')}`, 'available');
+    } else {
+      this.setStatus('Translation unavailable for selected languages', 'unavailable');
+    }
   },
 
+  // translateToTargets: translate final text into all selected targets in parallel.
+  // Returns [{lang, text}, …].  Never blocks the caption pipeline.
   async translateToTargets(text, sourceTag, targets) {
     if (!text || !this.isSupported()) return [];
-    const source = this.sourceFromTag(sourceTag || State.recognitionLang || 'en');
-    const cleanTargets = Array.isArray(targets)
-      ? targets.map((code) => String(code || '').toLowerCase()).filter((code) => /^[a-z]{2,8}$/.test(code)).slice(0, TRANSLATION_MAX_TARGETS)
-      : [];
+    const source = this.sourceFromTag(sourceTag);
+    const cleanTargets = [...new Set(
+      (Array.isArray(targets) ? targets : [])
+        .map((c) => String(c || '').toLowerCase())
+        .filter((c) => /^[a-z]{2,8}$/.test(c))
+    )].slice(0, TRANSLATION_MAX_TARGETS).filter((t) => t !== source);
 
     if (!cleanTargets.length) return [];
-    const translations = [];
 
-    for (const target of cleanTargets) {
-      if (target === source) continue;
-      try {
+    const results = await Promise.allSettled(
+      cleanTargets.map(async (target) => {
         const translator = await this.ensurePair(source, target);
-        if (!translator) continue;
-        const translated = await translator.translate(text);
-        if (translated && translated.trim()) {
-          translations.push({ lang: target, text: translated.trim() });
-        }
-      } catch (err) {
-        console.warn(`[EchoLocate] Translation error (${source}->${target}):`, err);
-      }
-    }
+        if (!translator) return null;
+        const out = await translator.translate(text);
+        return out?.trim() ? { lang: target, text: out.trim() } : null;
+      })
+    );
 
-    if (translations.length) {
-      this.setStatus(`Translating from ${source.toUpperCase()} into ${translations.map((item) => item.lang.toUpperCase()).join(', ')}`, 'available');
-    }
-    return translations;
+    return results
+      .filter((r) => r.status === 'fulfilled' && r.value)
+      .map((r) => r.value);
   },
 };
 
-// ── Translation controls (opt-in + checklist, max 2 targets) ─────────────────
+// ── Translation controls (opt-in + compact dropdown, max 2 targets) ──────────
 async function initTranslationControls() {
-  const toggle = document.getElementById('translation-enabled-toggle');
-  const fieldset = document.getElementById('translation-targets-fieldset');
-  const list = document.getElementById('translation-target-list');
-  const note = document.getElementById('translation-selection-note');
-  const help = document.getElementById('translation-config-help');
+  const toggle   = document.getElementById('translation-enabled-toggle');
+  const langBtn  = document.getElementById('translation-lang-btn');
+  const dropdown = document.getElementById('translation-lang-dropdown');
+  const list     = document.getElementById('translation-target-list');
+  const note     = document.getElementById('translation-selection-note');
+  const help     = document.getElementById('translation-config-help');
 
-  if (!toggle || !fieldset || !list || !note || !help) return;
+  if (!toggle || !langBtn || !dropdown || !list || !note || !help) return;
 
   State.translationCapability = Translation.isSupported() ? 'supported' : 'unsupported';
 
   if (State.translationCapability === 'unsupported') {
     State.translationEnabled = false;
     localStorage.setItem('echolocate-translation-enabled', '0');
+    help.textContent = 'Translation requires Chrome 131+ with built-in AI features enabled in Chrome settings → AI features. Reload after enabling.';
     help.classList.remove('hidden');
-    help.textContent = 'Translation API not available in this browser. Use current Chrome/Chromium and enable built-in AI translation features in browser settings, then reload.';
-    Translation.setStatus('Translation unavailable in this browser', 'unsupported');
+    Translation.setStatus('Not available in this browser', 'unsupported');
   } else {
+    help.textContent = 'First use downloads a small model (5–20 MB) locally. Captions continue normally during download.';
     help.classList.remove('hidden');
-    help.textContent = 'Translation is available. It remains off until enabled. First use may download a local model.';
-    Translation.setStatus('', 'checking');
   }
 
+  // Build language checklist inside dropdown
   list.innerHTML = '';
   for (const lang of DEFAULT_TRANSLATION_TARGETS) {
     const id = `translation-target-${lang.code}`;
-    const wrapper = document.createElement('label');
+    const wrapper  = document.createElement('label');
     wrapper.className = 'translation-target-option';
     wrapper.setAttribute('for', id);
 
     const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.id = id;
-    checkbox.value = lang.code;
+    checkbox.type    = 'checkbox';
+    checkbox.id      = id;
+    checkbox.value   = lang.code;
     checkbox.checked = State.translationTargets.includes(lang.code);
 
-    const label = document.createElement('span');
-    label.textContent = `${lang.flag} ${lang.label}`;
+    const span = document.createElement('span');
+    span.textContent = `${lang.flag} ${lang.label}`;
 
     wrapper.appendChild(checkbox);
-    wrapper.appendChild(label);
+    wrapper.appendChild(span);
     list.appendChild(wrapper);
 
     checkbox.addEventListener('change', () => {
-      const selected = Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+      const selected = Array.from(
+        list.querySelectorAll('input[type="checkbox"]:checked')
+      ).map((el) => el.value);
+
       if (selected.length > TRANSLATION_MAX_TARGETS) {
         checkbox.checked = false;
-        note.textContent = `You can select up to ${TRANSLATION_MAX_TARGETS} target languages.`;
+        note.textContent = `Choose up to ${TRANSLATION_MAX_TARGETS} languages.`;
         note.classList.remove('hidden');
         return;
       }
@@ -334,39 +374,88 @@ async function initTranslationControls() {
       State.translationTargets = selected;
       localStorage.setItem('echolocate-translation-targets', JSON.stringify(selected));
       Translation._cache.clear();
+      updateLangBtnLabel();
+
+      if (State.translationEnabled && State.translationCapability === 'supported' && selected.length) {
+        const src = Translation.sourceFromTag(State.recognitionLang);
+        Translation.preWarmTranslators(src, selected).catch(() => {});
+      }
     });
   }
 
-  // Guard against stale persisted values.
-  const selectedNow = Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map((el) => el.value);
+  // Sync persisted selection back to DOM state
+  const selectedNow = Array.from(
+    list.querySelectorAll('input[type="checkbox"]:checked')
+  ).map((el) => el.value);
   State.translationTargets = selectedNow.slice(0, TRANSLATION_MAX_TARGETS);
   localStorage.setItem('echolocate-translation-targets', JSON.stringify(State.translationTargets));
 
-  toggle.checked = State.translationEnabled && State.translationCapability === 'supported';
+  // Button label: "NL · FR ▾" or "+ languages" when none selected
+  function updateLangBtnLabel() {
+    const btnText = document.getElementById('translation-lang-btn-text');
+    if (!btnText) return;
+    if (!State.translationTargets.length) {
+      btnText.textContent = '+ languages';
+      return;
+    }
+    const selected = DEFAULT_TRANSLATION_TARGETS.filter((l) => State.translationTargets.includes(l.code));
+    btnText.textContent = selected.map((l) => `${l.flag} ${l.code.toUpperCase()}`).join(' · ') + ' ▾';
+  }
+
+  // Dropdown open / close
+  function openDropdown() {
+    dropdown.classList.remove('hidden');
+    langBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeDropdown() {
+    dropdown.classList.add('hidden');
+    langBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  langBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.contains('hidden') ? openDropdown() : closeDropdown();
+  });
+  dropdown.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', closeDropdown);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+      closeDropdown();
+      langBtn.focus();
+    }
+  });
+
+  toggle.checked  = State.translationEnabled && State.translationCapability === 'supported';
+  toggle.disabled = State.translationCapability !== 'supported';
 
   const syncEnabledState = () => {
     const enabled = !!toggle.checked && State.translationCapability === 'supported';
     State.translationEnabled = enabled;
     localStorage.setItem('echolocate-translation-enabled', enabled ? '1' : '0');
-    fieldset.disabled = !enabled;
+
     if (!enabled) {
+      langBtn.hidden = true;
+      closeDropdown();
       Translation.setStatus('', 'checking');
       return;
     }
+
+    langBtn.hidden = false;
+    updateLangBtnLabel();
+
     if (!State.translationTargets.length) {
-      note.textContent = 'Select at least one target language to translate.';
-      note.classList.remove('hidden');
-      Translation.setStatus('Translation enabled (choose target language)', 'checking');
+      Translation.setStatus('Choose at least one target language', 'checking');
       return;
     }
-    note.classList.add('hidden');
-    Translation.setStatus('Translation enabled', 'available');
+
+    // Pre-warm all selected pairs in the background immediately on enable
+    const src = Translation.sourceFromTag(State.recognitionLang);
+    Translation.preWarmTranslators(src, State.translationTargets).catch(() => {});
   };
 
-  toggle.disabled = State.translationCapability !== 'supported';
   syncEnabledState();
-
   toggle.addEventListener('change', syncEnabledState);
+  updateLangBtnLabel();
 }
 
 function checkSecureContext() {

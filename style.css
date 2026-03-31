@@ -741,31 +741,38 @@ body {
 .translation-text {
   display: block;
   margin-top: 0.45rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.28rem 0.5rem;
   font-size: 0.82rem;
   font-style: italic;
-  color: var(--text-muted);
-  border-left: 2px solid rgba(77, 171, 247, 0.5);
+  /* Use near-primary contrast at smaller size to meet WCAG AA (4.5:1 required
+     for text < 14px/18.66px bold). text-muted alone is too low. */
+  color: rgba(241, 243, 245, 0.88);
+  border-left: 2px solid rgba(77, 171, 247, 0.55);
   border-radius: 0 4px 4px 0;
-  background: rgba(77, 171, 247, 0.07);
+  background: rgba(77, 171, 247, 0.09);
   line-height: 1.45;
 }
 
 .translation-lang-tag {
   display: inline-block;
-  margin-right: 0.4rem;
+  margin-right: 0.35rem;
   font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  font-style: normal;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  opacity: 0.9;
+  color: rgba(77, 171, 247, 0.9);
 }
 
 [data-theme="light"] .translation-text {
-  color: #4a6080;
-  border-left-color: rgba(30, 100, 200, 0.4);
-  background: rgba(30, 100, 200, 0.06);
+  /* Dark-on-light: #2d3a4a against white gives > 9:1 contrast */
+  color: #2d3a4a;
+  border-left-color: rgba(30, 100, 200, 0.45);
+  background: rgba(30, 100, 200, 0.07);
+}
+
+[data-theme="light"] .translation-lang-tag {
+  color: rgba(30, 100, 200, 0.85);
 }
 
 /* Translation status pill shown in the options panel */
@@ -804,67 +811,96 @@ body {
   background: rgba(55, 178, 77, 0.12);
 }
 
+/* Translation controls — compact toggle + dropdown button ─────────────────── */
 .translation-controls {
+  position: relative;
   display: inline-flex;
-  align-items: flex-start;
-  gap: 0.4rem;
   flex-direction: column;
+  gap: 0.3rem;
+}
+
+.translation-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
 
 .translation-enable-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.42rem;
+  gap: 0.4rem;
   font-size: 0.8rem;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .translation-enable-label input[type="checkbox"] {
-  width: 0.95rem;
-  height: 0.95rem;
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
 }
 
-.translation-help {
-  margin: 0;
-  max-width: 45ch;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  line-height: 1.35;
+.translation-lang-btn {
+  font-size: 0.74rem;
+  padding: 0.28rem 0.55rem;
+  height: 28px;
+  white-space: nowrap;
 }
 
-.translation-targets {
-  margin: 0;
+/* Dropdown panel — positioned absolute relative to .translation-controls */
+.translation-lang-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  padding: 0.45rem 0.55rem 0.5rem;
-  min-width: 245px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  padding: 0.55rem 0.6rem 0.6rem;
+  min-width: 235px;
 }
 
-.translation-targets legend {
+.translation-lang-dropdown.hidden { display: none; }
+
+[data-theme="light"] .translation-lang-dropdown {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.translation-dropdown-hint {
+  margin: 0 0 0.4rem;
   font-size: 0.68rem;
   color: var(--text-muted);
-  padding: 0 0.35rem;
 }
 
 .translation-target-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.28rem 0.5rem;
+  gap: 0.25rem 0.5rem;
 }
 
 .translation-target-option {
   display: inline-flex;
   align-items: center;
-  gap: 0.33rem;
+  gap: 0.3rem;
   font-size: 0.74rem;
   color: var(--text-primary);
+  cursor: pointer;
 }
 
 .translation-selection-note {
-  margin: 0;
-  font-size: 0.7rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.68rem;
   color: var(--warning);
+}
+
+.translation-help {
+  margin: 0;
+  max-width: 42ch;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.32;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

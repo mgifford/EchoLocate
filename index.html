@@ -133,21 +133,37 @@
         <label class="lang-picker-label" for="lang-select">Language</label>
         <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
 
-        <div class="translation-controls" id="translation-controls" aria-label="Translation controls">
-          <label class="translation-enable-label" for="translation-enabled-toggle">
-            <input id="translation-enabled-toggle" type="checkbox" />
-            <span>Enable translation</span>
-          </label>
+        <div class="translation-controls" id="translation-controls">
+          <span class="translation-row">
+            <label class="translation-enable-label" for="translation-enabled-toggle">
+              <input id="translation-enabled-toggle" type="checkbox" />
+              <span>Translate</span>
+            </label>
+            <button id="translation-lang-btn"
+                    class="btn btn-secondary translation-lang-btn"
+                    type="button"
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    aria-controls="translation-lang-dropdown"
+                    hidden>
+              <span id="translation-lang-btn-text">+ languages</span>
+            </button>
+            <span id="translation-status" class="translation-status hidden" aria-live="polite"></span>
+          </span>
+
+          <div id="translation-lang-dropdown"
+               class="translation-lang-dropdown hidden"
+               role="dialog"
+               aria-label="Choose up to 2 target languages">
+            <p class="translation-dropdown-hint">Choose up to 2 languages</p>
+            <div id="translation-target-list"
+                 class="translation-target-list"
+                 role="group"
+                 aria-label="Translation target languages"></div>
+            <p id="translation-selection-note" class="translation-selection-note hidden" aria-live="polite"></p>
+          </div>
 
           <p id="translation-config-help" class="translation-help hidden" role="note"></p>
-
-          <fieldset id="translation-targets-fieldset" class="translation-targets" disabled>
-            <legend>Translate captions into (choose up to 2)</legend>
-            <div id="translation-target-list" class="translation-target-list" role="group" aria-label="Translation target languages"></div>
-          </fieldset>
-
-          <p id="translation-selection-note" class="translation-selection-note hidden" aria-live="polite"></p>
-          <span id="translation-status" class="translation-status hidden" aria-live="polite"></span>
         </div>
 
         <span class="source-picker-wrapper">
