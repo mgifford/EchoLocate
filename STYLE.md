@@ -262,6 +262,50 @@ Write base CSS for the smallest screen first, then enhance with `min-width` quer
 - **Sanitization:** Always use `escapeHtml()` in `sw.js` before inserting any
   user-controlled or externally sourced string into a rendered HTML fragment.
 
+### 3.6 Navigation menu pattern
+
+EchoLocate uses a **progressive disclosure** pattern for the header toolbar. This
+keeps the primary row compact enough for phones and laptops while still exposing all
+controls.
+
+#### Primary toolbar (always visible)
+
+The primary toolbar contains only the controls a user needs in every session:
+
+| Control | Purpose |
+| :--- | :--- |
+| Status indicator | Shows whether the microphone is active |
+| Start / Stop | Begin or end a transcription session |
+| Layout toggle | Switch between chat and lanes views |
+| Options button | Open the secondary options panel |
+| Theme toggle | Switch between dark and light modes |
+
+#### Options panel (revealed on demand)
+
+All secondary controls live in a collapsible panel anchored below the header. The
+panel opens when the user activates the Options button and closes when the button is
+pressed again, the user clicks outside the header, or the Escape key is pressed.
+
+Secondary controls include: language picker, audio input selector, Export VTT, Debug,
+Stereo, Sys Audio, and Clear Local. The Merge tools group is an additional exception:
+it is hidden until two or more speaker profiles exist, because merging requires at
+least two channels.
+
+#### ARIA requirements
+
+- The Options toggle button uses `aria-expanded` (`"true"` / `"false"`) to
+  communicate panel state to assistive technology.
+- `aria-controls` on the button points to the panel's `id` (`nav-options-panel`).
+- The panel uses the native `hidden` attribute so browsers and screen readers treat
+  it as absent from the accessibility tree when closed.
+- Pressing Escape while the panel is open closes it and returns focus to the toggle
+  button.
+
+#### Implementation references
+
+- [ARIA Disclosure (Show/Hide) pattern — W3C APG](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/)
+- [Navigation menus examples — mgifford/STYLES.md](https://github.com/mgifford/STYLES.md/tree/main/examples/navigation-menus)
+
 ---
 
 ## 4. Accessibility and semantic logic

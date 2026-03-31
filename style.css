@@ -117,6 +117,9 @@ body {
 /* ── Utility ────────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
 
+/* Enforce the HTML hidden attribute over any author-set display values. */
+[hidden] { display: none !important; }
+
 /* ── Accessibility: reduced-motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -179,6 +182,7 @@ body {
    HEADER
    ═══════════════════════════════════════════════════════════════════════════ */
 .app-header {
+  position: relative;   /* anchor for the absolute options panel */
   flex-shrink: 0;
   height: var(--header-h);
   background: var(--bg-surface);
@@ -364,6 +368,46 @@ body {
 
 [data-theme="light"] .sun-icon  { display: none; }
 [data-theme="light"] .moon-icon { display: block; }
+
+/* ── Options toggle button ──────────────────────────────────────────────────── */
+/* Active (expanded) state matches the primary button style so it's obvious. */
+.nav-options-toggle[aria-expanded="true"] {
+  background: var(--accent-a);
+  color: #000;
+}
+
+.nav-options-toggle[aria-expanded="false"]::after { content: ' ▾'; }
+.nav-options-toggle[aria-expanded="true"]::after  { content: ' ▴'; }
+
+/* ── Secondary options panel ───────────────────────────────────────────────── */
+/* Drops below the header as an overlay so the main content does not reflow.   */
+.nav-options-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  z-index: 45;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+.nav-options-panel[hidden] { display: none !important; }
+
+[data-theme="light"] .nav-options-panel {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+}
+
+.nav-options-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.65rem 1.5rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    MAIN — flex: 1 so it fills everything between header and footer
@@ -859,10 +903,21 @@ body {
 
   .controls { gap: 0.35rem; }
   .btn      { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-  #btn-debug { display: none; }
-  .lang-picker-label,
-  .lang-select,
-  .merge-tools { display: none; }
+
+  /* Hide verbose status text on small screens; the dot alone is sufficient. */
+  .mic-status { display: none; }
+  .mic-info   { display: none; }
+  .stereo-info { display: none; }
+  .system-audio-info { display: none; }
+}
+
+/* ── Extra-narrow screens (phones ≤ 480 px) ──────────────────────────────── */
+/* Reduce padding and hide the Phase badge + layout toggle so the primary     */
+/* toolbar items (Start, Stop, Options, Theme) fit without overflowing.       */
+@media (max-width: 480px) {
+  .header-inner { padding: 0 0.625rem; }
+  .phase-badge  { display: none; }
+  .btn-view-toggle { display: none !important; }
 
   .lang-mismatch-hint {
     max-width: 52%;
@@ -870,11 +925,6 @@ body {
     padding: 0.16rem 0.42rem;
   }
 
-  .mic-status { display: none; }
-  .mic-info   { display: none; }
-  .stereo-info { display: none; }
-  .system-audio-info { display: none; }
-  .source-picker-wrapper { display: none; }
   .footer-community {
     font-size: 0.68rem;
     padding: 0.2rem 0.75rem 0.45rem;
@@ -1060,9 +1110,17 @@ body {
 }
 
 /* ── View toggle button active state ────────────────────────────────────────── */
-#btn-view-toggle[aria-pressed="true"] {
+#btn-view-toggle[aria-pressed="true"],
+#btn-view-toggle-alt[aria-pressed="true"] {
   background: var(--accent-a);
   color: #000;
+}
+
+/* The alt layout toggle lives in the options panel; show it only when the    */
+/* primary toolbar toggle is hidden (narrow screens).                         */
+.btn-view-toggle-alt { display: none; }
+@media (max-width: 480px) {
+  .btn-view-toggle-alt { display: inline-flex; }
 }
 
 /* ── View override classes (set by JS applyView) ────────────────────────────── */

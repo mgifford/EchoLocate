@@ -73,41 +73,30 @@
           <span id="status-text">Ready</span>
         </div>
 
-        <label class="lang-picker-label" for="lang-select">Language</label>
-        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
-
-        <span class="source-picker-wrapper">
-          <label class="lang-picker-label" for="audio-source-select">Audio In</label>
-          <select id="audio-source-select" class="lang-select source-select" aria-label="Audio input device"></select>
-        </span>
-
         <button id="btn-start" class="btn btn-primary"   aria-label="Start transcription">Start</button>
         <button id="btn-stop"  class="btn btn-secondary" aria-label="Stop transcription"  disabled>Stop</button>
-        <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
-        <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
-        <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
-        <button id="btn-system-audio" class="btn btn-secondary" aria-label="Capture system/computer audio for source detection" aria-pressed="false" title="Share a tab or screen with audio to detect computer vs microphone speech">Sys Audio</button>
-        <button id="btn-clear" class="btn btn-danger"    aria-label="Clear locally saved discussion">Clear Local</button>
 
-        <div class="merge-tools" aria-label="Merge speaker lanes">
-          <label for="merge-from">Merge</label>
-          <select id="merge-from" aria-label="Merge from speaker"></select>
-          <span>into</span>
-          <select id="merge-into" aria-label="Merge into speaker"></select>
-          <button id="btn-merge" class="btn btn-secondary" type="button" aria-label="Merge speaker lanes">Merge</button>
-        </div>
+        <!-- View toggle — switch between multi-lane and single chat feed -->
+        <button id="btn-view-toggle"
+          class="btn btn-secondary btn-view-toggle"
+          type="button"
+          aria-label="Switch transcript layout"
+          title="Switch transcript layout"
+          aria-pressed="false">
+          Layout: Chat
+        </button>
+
+        <!-- Options toggle — opens/closes the secondary controls panel -->
+        <button id="nav-options-toggle"
+          class="btn btn-secondary nav-options-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="nav-options-panel"
+          aria-label="Open options menu">
+          Options
+        </button>
+
         <!-- Theme toggle — last in tab order per a11y guidance -->
-          <!-- View toggle — switch between multi-lane and single chat feed -->
-          <button id="btn-view-toggle"
-            class="btn btn-secondary btn-view-toggle"
-            type="button"
-            aria-label="Switch transcript layout"
-            title="Switch transcript layout"
-            aria-pressed="false">
-            View: Chat
-          </button>
-
-          <!-- Theme toggle — last in tab order per a11y guidance -->
         <button id="theme-toggle"
                 class="btn theme-toggle"
                 type="button"
@@ -127,6 +116,46 @@
       </div>
 
     </div>
+
+    <!-- Secondary controls panel — hidden until Options is clicked -->
+    <div id="nav-options-panel" class="nav-options-panel" hidden>
+      <div class="nav-options-inner">
+
+        <label class="lang-picker-label" for="lang-select">Language</label>
+        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
+
+        <span class="source-picker-wrapper">
+          <label class="lang-picker-label" for="audio-source-select">Audio In</label>
+          <select id="audio-source-select" class="lang-select source-select" aria-label="Audio input device"></select>
+        </span>
+
+        <button id="btn-export" class="btn btn-secondary" aria-label="Export transcript as VTT">Export VTT</button>
+        <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
+        <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
+        <button id="btn-system-audio" class="btn btn-secondary" aria-label="Capture system/computer audio for source detection" aria-pressed="false" title="Share a tab or screen with audio to detect computer vs microphone speech">Sys Audio</button>
+        <button id="btn-clear" class="btn btn-danger" aria-label="Clear locally saved discussion">Clear Local</button>
+
+        <!-- Layout toggle — shown here only when the primary toolbar toggle is hidden (narrow screens) -->
+        <button id="btn-view-toggle-alt"
+          class="btn btn-secondary btn-view-toggle-alt"
+          type="button"
+          aria-label="Switch transcript layout"
+          aria-pressed="false">
+          Layout: Chat
+        </button>
+
+        <!-- Merge tools — shown only when two or more speaker profiles exist -->
+        <div class="merge-tools" id="merge-tools-wrapper" aria-label="Merge speaker lanes" hidden>
+          <label for="merge-from">Merge</label>
+          <select id="merge-from" aria-label="Merge from speaker"></select>
+          <span>into</span>
+          <select id="merge-into" aria-label="Merge into speaker"></select>
+          <button id="btn-merge" class="btn btn-secondary" type="button" aria-label="Merge speaker lanes">Merge</button>
+        </div>
+
+      </div>
+    </div>
+
   </header>
 
   <main class="app-main" id="app-main">

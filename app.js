@@ -472,6 +472,7 @@ function refreshMergeControls() {
   const fromSel = document.getElementById('merge-from');
   const intoSel = document.getElementById('merge-into');
   const btn = document.getElementById('btn-merge');
+  const wrapper = document.getElementById('merge-tools-wrapper');
   if (!fromSel || !intoSel || !btn) return;
 
   const options = State.profiles.map((p) => ({ id: p.id, label: p.label }));
@@ -483,6 +484,15 @@ function refreshMergeControls() {
     intoSel.value = options[0].id;
   }
   btn.disabled = options.length < 2;
+
+  // Reveal merge controls only once two or more speaker profiles exist.
+  if (wrapper) {
+    if (options.length >= 2) {
+      wrapper.removeAttribute('hidden');
+    } else {
+      wrapper.setAttribute('hidden', '');
+    }
+  }
 }
 
 async function mergeProfiles(fromId, intoId) {
@@ -751,13 +761,19 @@ function applyView(view) {
   document.body.classList.toggle('view-lanes', normalized !== 'chat');
   localStorage.setItem('echolocate-view', normalized);
 
-  const btn = document.getElementById('btn-view-toggle');
-  if (!btn) return;
   const inChat = normalized === 'chat';
-  btn.textContent = inChat ? 'Layout: Chat' : 'Layout: Lanes';
-  btn.setAttribute('aria-pressed', inChat ? 'true' : 'false');
-  btn.setAttribute('aria-label', inChat ? 'Switch layout (currently chat)' : 'Switch layout (currently lanes)');
-  btn.title = 'Switch between chat and lanes layouts';
+  const label = inChat ? 'Layout: Chat' : 'Layout: Lanes';
+  const ariaLabel = inChat ? 'Switch layout (currently chat)' : 'Switch layout (currently lanes)';
+
+  // Keep both the primary toolbar toggle and the options-panel alt toggle in sync.
+  for (const id of ['btn-view-toggle', 'btn-view-toggle-alt']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.textContent = label;
+    btn.setAttribute('aria-pressed', inChat ? 'true' : 'false');
+    btn.setAttribute('aria-label', ariaLabel);
+    btn.title = 'Switch between chat and lanes layouts';
+  }
 }
 
 function initViewToggle() {
@@ -765,12 +781,14 @@ function initViewToggle() {
   const mobileDefault = window.matchMedia('(max-width: 700px)').matches ? 'chat' : 'lanes';
   applyView(saved || mobileDefault);
 
-  const btn = document.getElementById('btn-view-toggle');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    const next = document.body.classList.contains('view-chat') ? 'lanes' : 'chat';
-    applyView(next);
-  });
+  for (const id of ['btn-view-toggle', 'btn-view-toggle-alt']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.addEventListener('click', () => {
+      const next = document.body.classList.contains('view-chat') ? 'lanes' : 'chat';
+      applyView(next);
+    });
+  }
 }
 
 function startLanguageHintTimer() {
@@ -1926,6 +1944,47 @@ async function restoreSession() {
   updateEmptyStage();
 }
 
+function initNavOptions() {
+  const toggleBtn = document.getElementById('nav-options-toggle');
+  const panel = document.getElementById('nav-options-panel');
+  if (!toggleBtn || !panel) return;
+
+  function openPanel() {
+    panel.removeAttribute('hidden');
+    toggleBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closePanel() {
+    panel.setAttribute('hidden', '');
+    toggleBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (toggleBtn.getAttribute('aria-expanded') === 'true') {
+      closePanel();
+    } else {
+      openPanel();
+    }
+  });
+
+  // Close the panel when the user clicks anywhere outside the header.
+  document.addEventListener('click', (e) => {
+    const header = panel.closest('header');
+    if (!panel.hidden && (!header || !header.contains(e.target))) {
+      closePanel();
+    }
+  });
+
+  // Close on Escape and return focus to the toggle button.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !panel.hidden) {
+      closePanel();
+      toggleBtn.focus();
+    }
+  });
+}
+
 function initControls() {
   const btnStart = document.getElementById('btn-start');
   const btnStop = document.getElementById('btn-stop');
@@ -2059,6 +2118,7 @@ async function boot() {
   await initLanguageSelector();
   await initLanguageDetection();
   initViewToggle();
+  initNavOptions();
   await initAudioDeviceSelector();
 
   await registerServiceWorker();
