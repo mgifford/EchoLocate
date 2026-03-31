@@ -1584,6 +1584,8 @@ function buildLane(profile) {
   const cards = document.createElement('div');
   cards.className = 'lane-cards';
   cards.id = `lane-${profile.id}-cards`;
+  cards.setAttribute('tabindex', '0');
+  cards.setAttribute('aria-label', `${profile.label} transcript cards, scrollable`);
 
   lane.appendChild(header);
   lane.appendChild(cards);
