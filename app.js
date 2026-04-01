@@ -1918,17 +1918,84 @@ async function postChatMsg(cardData) {
 
 const TranscriptCtrl = {
   _liveEl: null,
+  _interimCardEl: null,
+  _interimProfile: null,
 
   init() {
     this._liveEl = document.getElementById('live-transcript');
   },
 
   showInterim(text) {
-    if (!this._liveEl) return;
-    this._liveEl.textContent = text;
-    this._liveEl.classList.toggle('speaking', text.length > 0);
     if (text && !State.currentUtteranceStartedAt) {
       State.currentUtteranceStartedAt = Date.now();
+    }
+
+    // Always clear the bottom strip; it serves as fallback only
+    if (this._liveEl) {
+      this._liveEl.textContent = '';
+      this._liveEl.classList.remove('speaking');
+    }
+
+    if (!text) {
+      this._removeInterimCard();
+      return;
+    }
+
+    // Show inline inside the active speaker's lane when one exists
+    const profile = profileById(State.activeSpeakerId);
+    if (profile && profile.cardsEl) {
+      this._updateInterimCard(text, profile);
+    } else if (this._liveEl) {
+      // Fallback: bottom strip when no lane has been created yet
+      this._liveEl.textContent = text;
+      this._liveEl.classList.add('speaking');
+    }
+  },
+
+  // Create or refresh the inline interim card for the given profile.
+  _updateInterimCard(text, profile) {
+    // If the speaker changed mid-utterance, discard the previous card
+    if (this._interimProfile && this._interimProfile !== profile) {
+      this._removeInterimCard();
+    }
+
+    if (!this._interimCardEl) {
+      const card = document.createElement('article');
+      card.className = 'card card-tone-mid card-interim-live';
+      card.setAttribute('role', 'status');
+      card.setAttribute('aria-live', 'polite');
+      card.setAttribute('aria-label', 'Speech in progress');
+      card.style.setProperty('--speaker-color', profile.color);
+
+      const textEl = document.createElement('span');
+      textEl.className = 'interim-live-text';
+      card.appendChild(textEl);
+
+      const dot = document.createElement('span');
+      dot.className = 'interim-live-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      card.appendChild(dot);
+
+      profile.cardsEl.appendChild(card);
+      this._interimCardEl = card;
+      this._interimProfile = profile;
+    }
+
+    const textEl = this._interimCardEl.querySelector('.interim-live-text');
+    if (textEl) textEl.textContent = text;
+
+    // Only scroll if the user is already near the bottom to avoid interrupting review
+    const el = this._interimProfile.cardsEl;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      el.scrollTop = el.scrollHeight;
+    }
+  },
+
+  _removeInterimCard() {
+    if (this._interimCardEl) {
+      this._interimCardEl.remove();
+      this._interimCardEl = null;
+      this._interimProfile = null;
     }
   },
 

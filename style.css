@@ -1030,6 +1030,37 @@ body {
 /* Slightly brighter while actively speaking */
 .interim-text.speaking { color: rgba(241, 243, 245, 0.65); }
 
+/* ─── Inline interim (live) card ────────────────────────────────────────────
+   Shown inside the active speaker's lane while speech is in progress.
+   Removed and replaced by the finalised card once the utterance ends.
+   ────────────────────────────────────────────────────────────────────────── */
+.card-interim-live {
+  opacity: 0.7;
+  font-style: italic;
+  border-left-style: dashed !important;
+  animation: none;   /* skip the card-enter animation — text updates too rapidly */
+}
+
+.interim-live-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--speaker-color, var(--accent-a));
+  margin-left: 0.6rem;
+  vertical-align: middle;
+  animation: interim-dot-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes interim-dot-pulse {
+  0%, 100% { opacity: 1;   transform: scale(1);    }
+  50%       { opacity: 0.3; transform: scale(0.75); }
+}
+
+[data-theme="light"] .card-interim-live {
+  opacity: 0.75;
+}
+
 .lang-mismatch-hint {
   flex-shrink: 0;
   max-width: 45%;
