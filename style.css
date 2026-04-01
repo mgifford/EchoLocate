@@ -1143,6 +1143,11 @@ body {
   font-size: 0.7rem;
 }
 
+.debug-log-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
 .debug-log-head .btn {
   padding: 0.15rem 0.55rem;
   font-size: 0.64rem;
