@@ -128,6 +128,29 @@ const ISO3_TO_BCP47 = {
 
 const SPEAKER_TRANSLATION_PREFS_KEY = 'echolocate-speaker-translation-prefs';
 
+const LLM_PROMPT_PREFIX =
+`# Role
+Act as a professional Executive Assistant and Expert Scribe. Your goal is to synthesize the following meeting transcript into a highly organized, concise summary.
+
+# Context
+The transcript may contain anonymous speakers (e.g., "Speaker 1", "Speaker A"). Even if names are not provided, maintain the distinction between these individuals to capture the "threaded" nature of the debate or discussion.
+
+# Tasks
+1. **Executive Summary**: A 2-3 sentence overview of the meeting's purpose and primary outcome.
+2. **Threaded Discussion Points**: Organize the core of the meeting by "Topic Threads." For each thread:
+   - Identify the main topic.
+   - Summarize the back-and-forth, highlighting differing perspectives from specific speakers (e.g., "Speaker 1 proposed X, while Speaker 2 raised concerns about Y").
+3. **Action Items**: Extract all tasks, deadlines, and owners mentioned. Use a checklist format. If an owner is not specified, label it "Unassigned."
+4. **Decisions Made**: List any final conclusions or "dead ends" reached during the session.
+
+# Constraints
+- Be concise. Use bullet points.
+- Remove filler words ("um," "uh," "like") and repetitive conversational loops.
+- Use bolding for key terms and speaker identifiers.
+
+# Transcript
+`;
+
 function normalizeTranslationTargets(input) {
   return [...new Set(
     (Array.isArray(input) ? input : [])
@@ -2885,6 +2908,53 @@ function toVtt(cards) {
   return out;
 }
 
+function toPlainText(cards) {
+  if (!cards.length) return '';
+  const sorted = [...cards].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
+  return sorted.map(c => {
+    const speaker = String(c.speakerLabel || 'Speaker').replace(/[<>&"']/g, '');
+    const text = String(c.text || '').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+    return `${speaker}: ${text}`;
+  }).join('\n');
+}
+
+/**
+ * Copy text to the clipboard and briefly update a button's label as feedback.
+ * @param {string} text      - Content to copy.
+ * @param {HTMLElement} btn  - Button element that triggered the action.
+ */
+function copyTextToClipboard(text, btn) {
+  const feedback = (label, ms = 1500) => {
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = label;
+    setTimeout(() => { btn.textContent = orig; }, ms);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text)
+      .then(() => feedback('Copied!'))
+      .catch((err) => {
+        console.warn('[EchoLocate] Clipboard write failed:', err);
+        feedback('Failed');
+      });
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      feedback('Copied!');
+    } catch (err) {
+      console.warn('[EchoLocate] Clipboard copy fallback failed:', err);
+      feedback('Failed');
+    }
+    document.body.removeChild(ta);
+  }
+}
+
 function downloadTextFile(filename, content, type) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -3018,6 +3088,8 @@ function initControls() {
   const btnStop = document.getElementById('btn-stop');
   const btnClear = document.getElementById('btn-clear');
   const btnExport = document.getElementById('btn-export');
+  const btnCopyChat = document.getElementById('btn-copy-chat');
+  const btnSummarizeLlm = document.getElementById('btn-summarize-llm');
   const btnDebug = document.getElementById('btn-debug');
   const btnStereo = document.getElementById('btn-stereo');
   const btnSystemAudio = document.getElementById('btn-system-audio');
@@ -3068,6 +3140,22 @@ function initControls() {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     downloadTextFile(`echolocate-${stamp}.vtt`, vtt, 'text/vtt;charset=utf-8');
   });
+
+  if (btnCopyChat) {
+    btnCopyChat.addEventListener('click', () => {
+      const cards = Storage.allCards();
+      const vtt = toVtt(cards);
+      copyTextToClipboard(vtt, btnCopyChat);
+    });
+  }
+
+  if (btnSummarizeLlm) {
+    btnSummarizeLlm.addEventListener('click', () => {
+      const cards = Storage.allCards();
+      const transcript = toPlainText(cards);
+      copyTextToClipboard(LLM_PROMPT_PREFIX + transcript, btnSummarizeLlm);
+    });
+  }
 
   btnDebug.addEventListener('click', () => {
     State.debugEnabled = !State.debugEnabled;
