@@ -136,6 +136,9 @@ Before committing:
 node --check app.js && node --check sw.js
 ```
 
+## Related projects
+Check out [Airtime2](https://github.com/mgifford/airtime2) to highlight who spoke and how much time that took. Note that this works much better working directly with a .vtt file from a tool like Zoom. 
+
 ## License
 
 [MIT](LICENSE)
