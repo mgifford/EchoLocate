@@ -1001,9 +1001,20 @@ function buildSignatureVector(frame, fallbackCentroid) {
 function signatureDescriptor(features) {
   if (!features) return 'Profile warming up';
 
-  const attack = features.zcr > 0.065 ? 'Sharp attack' : 'Smooth attack';
-  const resonance = features.spectralSlope < 0 ? 'Chest resonance' : 'Nasal resonance';
-  const texture = features.spectralFlatness > 0.16 ? 'Breathy texture' : 'Voiced texture';
+  // When two or more speaker profiles exist, use session means as adaptive
+  // thresholds so that descriptors differentiate speakers even on uniformly
+  // processed audio (e.g. Zoom compression pushes all absolute values in the
+  // same direction, making fixed thresholds return identical labels).
+  const allStats = State.profiles.map((p) => p.signatureStats).filter(Boolean);
+  const useAdaptive = allStats.length >= 2;
+
+  const tZcr      = useAdaptive ? mean(allStats.map((s) => s.zcr || 0))             : 0.065;
+  const tSlope    = useAdaptive ? mean(allStats.map((s) => s.spectralSlope || 0))    : 0;
+  const tFlatness = useAdaptive ? mean(allStats.map((s) => s.spectralFlatness || 0)) : 0.16;
+
+  const attack    = features.zcr              > tZcr      ? 'Sharp attack'    : 'Smooth attack';
+  const resonance = features.spectralSlope    < tSlope    ? 'Chest resonance' : 'Nasal resonance';
+  const texture   = features.spectralFlatness > tFlatness ? 'Breathy texture'  : 'Voiced texture';
   return `${attack}, ${resonance}, ${texture}`;
 }
 
@@ -1762,6 +1773,12 @@ function resolveSpeakerProfile(metrics) {
     bestSimilarity = smoothed.similarity;
   }
 
+  // Log assignment scores to aid debugging of speaker-detection issues.
+  if (signature) {
+    const scoreStr = scored.map((s) => `${s.profile.id}:${s.similarity.toFixed(3)}`).join(', ');
+    console.log(`[EchoLocate] Speaker scores [${scoreStr}] → ${best ? best.id : 'none'} (${bestSimilarity.toFixed(3)}, threshold ${CFG.SIGNATURE_MATCH_SIMILARITY})`);
+  }
+
   const shouldAttach = best && (bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY || State.profiles.length >= State.maxSpeakers);
   if (shouldAttach) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
@@ -1773,7 +1790,24 @@ function resolveSpeakerProfile(metrics) {
         best.signature = signature;
       }
     }
-    best.signatureStats = signatureStats || best.signatureStats;
+    // Blend signatureStats as a running average (same 0.72/0.28 weight as the
+    // signature vector) so each profile's voice descriptor stabilises over time
+    // instead of being overwritten by every new utterance.
+    if (signatureStats) {
+      if (best.signatureStats) {
+        const blendWeight = 0.28;
+        best.signatureStats = {
+          spectralCentroid: best.signatureStats.spectralCentroid * (1 - blendWeight) + signatureStats.spectralCentroid * blendWeight,
+          spectralRolloff:  best.signatureStats.spectralRolloff  * (1 - blendWeight) + signatureStats.spectralRolloff  * blendWeight,
+          spectralFlatness: best.signatureStats.spectralFlatness * (1 - blendWeight) + signatureStats.spectralFlatness * blendWeight,
+          spectralSlope:    best.signatureStats.spectralSlope    * (1 - blendWeight) + signatureStats.spectralSlope    * blendWeight,
+          zcr:              best.signatureStats.zcr              * (1 - blendWeight) + signatureStats.zcr              * blendWeight,
+          rms:              best.signatureStats.rms              * (1 - blendWeight) + signatureStats.rms              * blendWeight,
+        };
+      } else {
+        best.signatureStats = signatureStats;
+      }
+    }
     best.matchLevel = confidenceFromSimilarity(bestSimilarity);
     State.speakerLock = { id: best.id, until: Date.now() + CFG.HYSTERESIS_LOCK_MS };
 
@@ -1788,6 +1822,7 @@ function resolveSpeakerProfile(metrics) {
     return { profile: best, matchRatio: bestSimilarity, confidenceLevel: best.matchLevel, createdNew: false };
   }
 
+  console.log(`[EchoLocate] New speaker profile created (best similarity ${bestSimilarity.toFixed(3)} < threshold ${CFG.SIGNATURE_MATCH_SIMILARITY}, profiles so far: ${State.profiles.length + 1}/${State.maxSpeakers})`);
   const next = newProfile(pitch, tone);
   next.signature = signature || null;
   next.signatureStats = signatureStats || null;
@@ -2186,12 +2221,18 @@ const DebugLog = {
     const sr  = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     const sw  = 'serviceWorker' in navigator;
     const ctx = State.audioCtx;
+    const meydaStr = State.meydaAnalyzer ? 'active' : (window.Meyda ? 'loaded (no analyser)' : 'unavailable');
+    const profilesStr = State.profiles.length
+      ? State.profiles.map((p) => `${p.id}(${p.avgPitch.toFixed(0)}Hz,${p.matchLevel})`).join(', ')
+      : 'none';
     return [
       `UA: ${navigator.userAgent}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
-      `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'}`,
+      `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
+      `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
+      `Speakers: ${State.profiles.length} active — ${profilesStr}`,
     ].join('\n');
   },
 
