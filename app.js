@@ -29,6 +29,12 @@ const CFG = Object.freeze({
   NETWORK_ONLINE_MAX_RETRIES: 3,
   NETWORK_BACKOFF_INIT_MS:    1_000,
   NETWORK_BACKOFF_MAX_MS:     30_000,
+  // Sessions that end within this many milliseconds without producing any
+  // speech result are considered "quick ends" (e.g. Android Chrome firing
+  // no-speech immediately).  Consecutive quick ends trigger exponential backoff
+  // so the restart loop doesn't spin at 150 ms on devices where recognition
+  // terminates instantly.
+  QUICK_RESTART_THRESHOLD_MS: 3_000,
   // Minimum ratio of system-audio energy to mic energy required to attribute
   // a card to the computer source rather than the microphone.  A value of 1.5
   // means the computer audio must be 50 % louder than the mic before we call
@@ -730,6 +736,16 @@ async function registerServiceWorker() {
     const reg = await navigator.serviceWorker.register('./sw.js');
     console.log('[EchoLocate] Service worker registered (scope:', reg.scope, ')');
     await navigator.serviceWorker.ready;
+    // navigator.serviceWorker.ready resolves when the SW is *active*, but
+    // clients.claim() inside the activate handler may not have completed yet,
+    // leaving a window where the SW is active but not yet controlling this page.
+    // If that happens the htmx API POSTs bypass the SW and hit GitHub Pages
+    // directly, which returns 405.  Wait for the controller to be set first.
+    if (!navigator.serviceWorker.controller) {
+      await new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+      });
+    }
     console.log('[EchoLocate] Service worker active and controlling page.');
   } catch (err) {
     console.warn('[EchoLocate] SW registration skipped:', err.message);
@@ -2120,6 +2136,12 @@ const SpeechEngine = {
   _networkRetryCount: 0,
   _networkRetryDelay: CFG.NETWORK_BACKOFF_INIT_MS,
   _offlineHandler: null,
+  // Tracks consecutive recognition sessions that ended too quickly without
+  // producing a speech result (e.g. Android Chrome firing no-speech immediately).
+  // Used to apply exponential backoff and avoid a 150 ms spin loop.
+  _quickRestartCount: 0,
+  _quickRestartDelay: CFG.NETWORK_BACKOFF_INIT_MS,
+  _lastStartedAt: 0,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2134,6 +2156,7 @@ const SpeechEngine = {
 
     rec.onstart = () => {
       console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
+      this._lastStartedAt = Date.now();
       State.profilingStartedAt = Date.now();
       updateProfilingStatus();
       startPitchSampling();
@@ -2153,6 +2176,8 @@ const SpeechEngine = {
       this._resetWatchdog();
       this._networkRetryCount = 0;
       this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+      this._quickRestartCount = 0;
+      this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
       State.lastResultAt = Date.now();
       let interim = '';
 
@@ -2245,7 +2270,31 @@ const SpeechEngine = {
       console.log('[EchoLocate] SpeechRecognition ended — isRunning:', State.isRunning);
       clearTimeout(this._watchdogTimer);
       if (State.isRunning) {
-        const delay = this._networkRetryCount > 0 ? this._networkRetryDelay : CFG.RESTART_DELAY;
+        let delay;
+        if (this._networkRetryCount > 0) {
+          // Network-error backoff takes priority.
+          delay = this._networkRetryDelay;
+        } else {
+          // Check whether the session ended too quickly without producing any
+          // results (e.g. Android Chrome firing no-speech immediately).
+          // Apply exponential backoff to avoid spinning at 150 ms.
+          const sessionMs = this._lastStartedAt ? Date.now() - this._lastStartedAt : Infinity;
+          if (sessionMs < CFG.QUICK_RESTART_THRESHOLD_MS) {
+            this._quickRestartCount++;
+            this._quickRestartDelay = Math.min(
+              this._quickRestartDelay * 2,
+              CFG.NETWORK_BACKOFF_MAX_MS,
+            );
+            delay = this._quickRestartDelay;
+            console.warn(
+              `[EchoLocate] Recognition ended after ${sessionMs}ms — quick-restart backoff ${this._quickRestartCount} (next retry in ${delay}ms)`,
+            );
+          } else {
+            this._quickRestartCount = 0;
+            this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+            delay = CFG.RESTART_DELAY;
+          }
+        }
         console.log(`[EchoLocate] Scheduling restart in ${delay}ms (networkRetries: ${this._networkRetryCount})`);
         if (this._networkRetryCount === 0) {
           setStatus('restarting', 'Reconnecting...');
@@ -2339,6 +2388,8 @@ const SpeechEngine = {
     State.isRunning = false;
     this._networkRetryCount = 0;
     this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+    this._quickRestartCount = 0;
+    this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
     if (this._offlineHandler) {
       window.removeEventListener('online', this._offlineHandler);
       this._offlineHandler = null;
