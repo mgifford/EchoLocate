@@ -2927,23 +2927,46 @@ function formatVttTime(ms) {
 }
 
 function toVtt(cards) {
-  if (!cards.length) return 'WEBVTT\n\n';
+  const generated = new Date().toISOString();
+  if (!cards.length) return `WEBVTT - EchoLocate transcript\n\nNOTE\nGenerated: ${generated}\n\n`;
 
   const sorted = [...cards].sort((a, b) => (a.startedAt || 0) - (b.startedAt || 0));
   const base = sorted[0].startedAt || Date.parse(sorted[0].timestamp) || Date.now();
-  let out = 'WEBVTT\n\n';
+  let out = `WEBVTT - EchoLocate transcript\n\nNOTE\nGenerated: ${generated}\n\n`;
 
+  let cueIndex = 1;
   for (let i = 0; i < sorted.length; i++) {
     const cur = sorted[i];
     const next = sorted[i + 1];
     const start = cur.startedAt || Date.parse(cur.timestamp) || Date.now();
     const end = cur.endedAt || (next ? (next.startedAt || Date.parse(next.timestamp) || (start + 3000)) : (start + 3000));
 
-    out += `${i + 1}\n`;
+    // Sanitize voice annotation: strip chars that break the <v> tag (> ends the annotation)
+    const speaker = String(cur.speakerLabel || 'Speaker')
+      .replace(/[\n\r]/g, ' ')
+      .replace(/[<>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Speaker';
+
+    // Escape cue payload per WebVTT spec §4.7:
+    //   & → &amp; (must be first to avoid double-escaping)
+    //   < → &lt;  (prevents unintended VTT tag injection)
+    //   > → &gt;  (closes span tags in cue text; escape for safety)
+    //   --> → - > (sequence would terminate the cue timing line)
+    const text = String(cur.text || '')
+      .replace(/\n/g, ' ')
+      .trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/--&gt;/g, '- &gt;');
+
+    if (!text) continue; // skip cues with empty payload
+
+    out += `${cueIndex}\n`;
     out += `${formatVttTime(start - base)} --> ${formatVttTime(Math.max(end, start + 300) - base)}\n`;
-    const speaker = String(cur.speakerLabel || 'Speaker').replace(/[<>]/g, '');
-    const text = String(cur.text || '').replace(/\n/g, ' ').trim();
     out += `<v ${speaker}>${text}</v>\n\n`;
+    cueIndex++;
   }
 
   return out;
