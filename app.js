@@ -2074,6 +2074,8 @@ const TranscriptCtrl = {
       balance,
     });
 
+    this.clearInterim();
+
     const sourceLang = detectedLang || State.recognitionLang || 'en';
     const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
     const translations = (State.translationEnabled && State.translationCapability === 'supported')
@@ -2083,8 +2085,6 @@ const TranscriptCtrl = {
     cardData.translations = translations;
     cardData.translatedText = translations[0]?.text || '';
     cardData.translationLang = translations[0]?.lang || '';
-
-    this.clearInterim();
 
     await postCard(cardData);
     await postChatMsg(cardData);
