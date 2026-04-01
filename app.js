@@ -2191,6 +2191,119 @@ const DebugLog = {
     }
   },
 
+  /** Assemble a plain-text debug report (device info + log entries). */
+  _reportText() {
+    const lines = [
+      '=== EchoLocate Debug Report ===',
+      new Date().toISOString(),
+      '',
+      '--- Device Info ---',
+      this.deviceInfo(),
+      '',
+      '--- Log Entries (newest first) ---',
+      ...this._entries.slice().reverse().map(
+        (e) => `[${e.time}] [${e.level.toUpperCase()}] ${e.msg}`
+      ),
+    ];
+    return lines.join('\n');
+  },
+
+  /**
+   * Copy the current debug report to the clipboard.
+   * Uses the Clipboard API when available; falls back to execCommand.
+   */
+  copyToClipboard() {
+    const text = this._reportText();
+    const btn  = document.getElementById('btn-debug-log-copy');
+
+    const feedback = (label, ms = 1500) => {
+      if (!btn) return;
+      const orig = btn.textContent;
+      btn.textContent = label;
+      setTimeout(() => { btn.textContent = orig; }, ms);
+    };
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text)
+        .then(() => feedback('Copied!'))
+        .catch((err) => {
+          console.warn('[EchoLocate] Clipboard write failed:', err);
+          feedback('Failed');
+        });
+    } else {
+      // Fallback for older/non-secure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        feedback('Copied!');
+      } catch (err) {
+        console.warn('[EchoLocate] Clipboard copy fallback failed:', err);
+        feedback('Failed');
+      }
+      document.body.removeChild(ta);
+    }
+  },
+
+  /**
+   * Open a new GitHub issue pre-filled with the current debug report.
+   * The user must be signed into GitHub to submit the issue.
+   * Log entries are truncated from the oldest end if the resulting URL
+   * would exceed GitHub's effective limit (~8 000 encoded characters).
+   */
+  openGitHubIssue() {
+    const BASE_URL   = 'https://github.com/mgifford/EchoLocate/issues/new';
+    const MAX_URL    = 8000; // conservative safe limit for GitHub URLs
+    const TITLE_PART = '?title=' + encodeURIComponent('Bug Report') + '&body=';
+
+    const header = [
+      '## Bug / Debug Report',
+      '',
+      '**Generated:** ' + new Date().toISOString(),
+      '',
+      '### Device Info',
+      '```',
+      this.deviceInfo(),
+      '```',
+      '',
+      '### Log Entries (newest first)',
+      '```',
+    ].join('\n');
+
+    const footer = [
+      '```',
+      '',
+      '### Steps to Reproduce',
+      '<!-- Please describe what you were doing when this happened -->',
+    ].join('\n');
+
+    const allEntries = this._entries.slice().reverse().map(
+      (e) => `[${e.time}] [${e.level.toUpperCase()}] ${e.msg}`
+    );
+
+    // Iteratively drop oldest entries (the tail of the reversed array) until
+    // the URL fits within the safe limit.
+    let entries = allEntries;
+    let body, url;
+    do {
+      body = [header, ...entries, footer].join('\n');
+      url  = BASE_URL + TITLE_PART + encodeURIComponent(body);
+      if (url.length <= MAX_URL || entries.length === 0) break;
+      entries = entries.slice(0, -1);
+    } while (true);
+
+    if (entries.length < allEntries.length) {
+      console.warn(
+        `[EchoLocate] GitHub Issue URL truncated to ${entries.length} of ${allEntries.length} log entries to stay within URL length limit.`
+      );
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer');
+  },
+
   clear() {
     this._entries = [];
     this.render();
@@ -2964,6 +3077,16 @@ function initControls() {
   const btnDebugLogClear = document.getElementById('btn-debug-log-clear');
   if (btnDebugLogClear) {
     btnDebugLogClear.addEventListener('click', () => DebugLog.clear());
+  }
+
+  const btnDebugLogCopy = document.getElementById('btn-debug-log-copy');
+  if (btnDebugLogCopy) {
+    btnDebugLogCopy.addEventListener('click', () => DebugLog.copyToClipboard());
+  }
+
+  const btnDebugLogIssue = document.getElementById('btn-debug-log-issue');
+  if (btnDebugLogIssue) {
+    btnDebugLogIssue.addEventListener('click', () => DebugLog.openGitHubIssue());
   }
 
   btnStereo.addEventListener('click', () => {

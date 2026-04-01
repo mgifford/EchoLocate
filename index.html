@@ -283,8 +283,14 @@
              aria-atomic="false">
       <div class="debug-log-head">
         <strong>Debug Console</strong>
-        <button id="btn-debug-log-clear" class="btn btn-secondary" type="button"
-                aria-label="Clear debug console log">Clear</button>
+        <div class="debug-log-actions">
+          <button id="btn-debug-log-copy" class="btn btn-secondary" type="button"
+                  aria-label="Copy debug info to clipboard">Copy</button>
+          <button id="btn-debug-log-issue" class="btn btn-secondary" type="button"
+                  aria-label="Open a pre-filled GitHub issue with debug info">GitHub Issue</button>
+          <button id="btn-debug-log-clear" class="btn btn-secondary" type="button"
+                  aria-label="Clear debug console log">Clear</button>
+        </div>
       </div>
       <div id="debug-device-info" class="debug-device-info"></div>
       <ul id="debug-log-entries" class="debug-log-entries"
