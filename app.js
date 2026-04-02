@@ -35,6 +35,12 @@ const CFG = Object.freeze({
   // so the restart loop doesn't spin at 150 ms on devices where recognition
   // terminates instantly.
   QUICK_RESTART_THRESHOLD_MS: 3_000,
+  // On mobile Chrome the recognition API often runs for the full ~5 s timeout
+  // and ends without ever firing onresult (no-speech is silently swallowed).
+  // After this many consecutive sessions that produce no result (and last longer
+  // than QUICK_RESTART_THRESHOLD_MS), apply exponential backoff and surface a
+  // helpful status message so the user knows to check their microphone.
+  NO_RESULT_BACKOFF_COUNT:    3,
   // Minimum ratio of system-audio energy to mic energy required to attribute
   // a card to the computer source rather than the microphone.  A value of 1.5
   // means the computer audio must be 50 % louder than the mic before we call
@@ -2386,6 +2392,10 @@ const SpeechEngine = {
   _quickRestartCount: 0,
   _quickRestartDelay: CFG.NETWORK_BACKOFF_INIT_MS,
   _lastStartedAt: 0,
+  // Tracks consecutive sessions that lasted longer than QUICK_RESTART_THRESHOLD_MS
+  // but still produced no onresult (mobile Chrome's ~5 s no-speech timeout).
+  _noResultCount: 0,
+  _sessionHadResult: false,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2401,6 +2411,7 @@ const SpeechEngine = {
     rec.onstart = () => {
       console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
       this._lastStartedAt = Date.now();
+      this._sessionHadResult = false;
       State.profilingStartedAt = Date.now();
       updateProfilingStatus();
       startPitchSampling();
@@ -2422,6 +2433,8 @@ const SpeechEngine = {
       this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
       this._quickRestartCount = 0;
       this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+      this._noResultCount = 0;
+      this._sessionHadResult = true;
       State.lastResultAt = Date.now();
       let interim = '';
 
@@ -2536,12 +2549,33 @@ const SpeechEngine = {
           } else {
             this._quickRestartCount = 0;
             this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
-            delay = CFG.RESTART_DELAY;
+            if (!this._sessionHadResult) {
+              this._noResultCount++;
+              if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
+                const backoffStep = this._noResultCount - CFG.NO_RESULT_BACKOFF_COUNT + 1; // 1-based step at threshold
+                delay = Math.min(
+                  CFG.NETWORK_BACKOFF_INIT_MS * (2 ** (backoffStep - 1)),
+                  CFG.NETWORK_BACKOFF_MAX_MS,
+                );
+                console.warn(
+                  `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — no-result backoff (next retry in ${delay}ms)`,
+                );
+              } else {
+                delay = CFG.RESTART_DELAY;
+              }
+            } else {
+              this._noResultCount = 0;
+              delay = CFG.RESTART_DELAY;
+            }
           }
         }
         console.log(`[EchoLocate] Scheduling restart in ${delay}ms (networkRetries: ${this._networkRetryCount})`);
         if (this._networkRetryCount === 0) {
-          setStatus('restarting', 'Reconnecting...');
+          if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
+            setStatus('restarting', 'No speech detected — speak clearly or check microphone');
+          } else {
+            setStatus('restarting', 'Reconnecting...');
+          }
         }
         // When networkRetryCount > 0 the "Network error — retrying (N/M)…" status from
         // onerror is preserved so the user can see progress during the backoff delay.
@@ -2634,6 +2668,8 @@ const SpeechEngine = {
     this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
     this._quickRestartCount = 0;
     this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+    this._noResultCount = 0;
+    this._sessionHadResult = false;
     if (this._offlineHandler) {
       window.removeEventListener('online', this._offlineHandler);
       this._offlineHandler = null;
