@@ -1,0 +1,7 @@
+{
+  "name": "echolocate",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/sw.test.js tests/app.test.js"
+  }
+}
