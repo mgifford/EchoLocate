@@ -595,6 +595,11 @@ function isEdgeBrowser() {
   return /Edg\//.test(navigator.userAgent);
 }
 
+function isMobileBrowser() {
+  // Detect mobile browsers (Android, iPhone, iPad, iPod).
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (SR) {
@@ -607,6 +612,16 @@ function checkBrowserSupport() {
         showSpeechHelpModal(
           '⚠ Edge: enable online speech recognition',
           EDGE_SETUP_HTML,
+          'info',
+        );
+      });
+    } else if (isMobileBrowser() && !localStorage.getItem(MOBILE_MODAL_DISMISSED_KEY)) {
+      // Mobile browsers report SR as available but often fail silently.
+      // Warn the user proactively so they know before they press Start.
+      Promise.resolve().then(() => {
+        showSpeechHelpModal(
+          '⚠ Mobile: speech recognition may be limited',
+          MOBILE_SPEECH_WARNING_HTML,
           'info',
         );
       });
@@ -686,7 +701,20 @@ const SPEECH_BLOCKED_HTML = `
   regular (non-incognito) window.</p>
 `;
 
-const EDGE_MODAL_DISMISSED_KEY = 'echolocate-edge-modal-dismissed';
+const MOBILE_SPEECH_WARNING_HTML = `
+  <p>You are using a <strong>mobile browser</strong>.  Speech recognition
+  support on mobile devices is limited and may not work reliably.</p>
+  <p>On Android, Chrome's speech recognition requires a network connection
+  to Google's servers — if nothing is transcribed, your device, browser,
+  or network may be blocking it.</p>
+  <p>For the most reliable experience, use <strong>Google Chrome on a
+  desktop or laptop computer</strong>.  On mobile, make sure you have a
+  stable internet connection and that microphone permission is granted for
+  this site.</p>
+`;
+
+const EDGE_MODAL_DISMISSED_KEY   = 'echolocate-edge-modal-dismissed';
+const MOBILE_MODAL_DISMISSED_KEY = 'echolocate-mobile-modal-dismissed';
 
 // All callers must pass only trusted, pre-defined HTML strings — never user-
 // controlled content.  The bodyHTML parameter is always sourced from the
@@ -717,9 +745,11 @@ function initSpeechHelpModal() {
 
   const handleClose = () => {
     modal.close();
-    // Remember that the user has seen the Edge info so we don't show it every load.
+    // Remember that the user has seen the proactive info so we don't show it every load.
     if (isEdgeBrowser()) {
       localStorage.setItem(EDGE_MODAL_DISMISSED_KEY, '1');
+    } else if (isMobileBrowser()) {
+      localStorage.setItem(MOBILE_MODAL_DISMISSED_KEY, '1');
     }
   };
 
@@ -2572,7 +2602,11 @@ const SpeechEngine = {
         console.log(`[EchoLocate] Scheduling restart in ${delay}ms (networkRetries: ${this._networkRetryCount})`);
         if (this._networkRetryCount === 0) {
           if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
-            setStatus('restarting', 'No speech detected — speak clearly or check microphone');
+            setStatus('restarting', isMobileBrowser()
+              ? 'No speech detected — your device may not support speech recognition'
+              : 'No speech detected — speak clearly or check microphone');
+          } else if (this._noResultCount > 0) {
+            setStatus('restarting', 'No speech detected — check microphone');
           } else {
             setStatus('restarting', 'Reconnecting...');
           }
