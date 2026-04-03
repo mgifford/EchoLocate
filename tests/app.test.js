@@ -965,3 +965,54 @@ describe('languageBadgeText', () => {
     assert.equal(fn('zh'), 'zh');
   });
 });
+
+// ── isMobileBrowser ───────────────────────────────────────────────────────────
+
+describe('isMobileBrowser', () => {
+  const fn = ctx.isMobileBrowser;
+  const savedUA = ctx.navigator.userAgent;
+
+  const withUA = (ua, cb) => {
+    ctx.navigator.userAgent = ua;
+    try { return cb(); } finally { ctx.navigator.userAgent = savedUA; }
+  };
+
+  it('returns true for Android Chrome mobile UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Mobile Safari/537.36',
+      fn,
+    ), true);
+  });
+
+  it('returns true for iPhone UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      fn,
+    ), true);
+  });
+
+  it('returns true for iPad UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      fn,
+    ), true);
+  });
+
+  it('returns false for desktop Chrome UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      fn,
+    ), false);
+  });
+
+  it('returns false for desktop Firefox UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+      fn,
+    ), false);
+  });
+
+  it('returns false for the generic test UA', () => {
+    assert.equal(fn(), false);
+  });
+});
