@@ -120,9 +120,55 @@ See [INSTALL.txt](INSTALL.txt) for installation and troubleshooting details.
 
 ## Browser support
 
-1. Chrome desktop: supported
-2. Edge desktop: supported
-3. Firefox/Safari: Web Speech API limitation
+EchoLocate relies on the **Web Speech API** (`SpeechRecognition` / `webkitSpeechRecognition`).
+This API is only available in a narrow set of browsers, which determines what works and what does not.
+
+### Desktop
+
+| Browser | Status | Notes |
+|---------|--------|-------|
+| Chrome | ✅ Supported | Recommended. Speech is processed by Google's servers (requires internet). |
+| Edge | ✅ Supported | Requires **Online speech recognition** to be enabled in Windows Settings → Privacy & security → Speech. Does not work in InPrivate windows. |
+| Firefox | ❌ Not supported | Firefox does not implement the Web Speech API. |
+| Safari | ❌ Not supported | Safari does not implement Web Speech API on macOS in a compatible way. |
+
+### Mobile
+
+| Browser / Platform | Status | Notes |
+|--------------------|--------|-------|
+| Chrome on Android | ⚠️ Limited | Most likely to work. Requires an active internet connection (speech is sent to Google's servers). Grant microphone permission when prompted. |
+| Edge on Android | ⚠️ Limited | Reports the API as available but may fail silently. Not recommended. |
+| Firefox on Android | ❌ Not supported | No Web Speech API support. |
+| Samsung Internet | ❌ Not supported | No Web Speech API support. |
+| Kiwi Browser (Android) | ⚠️ Experimental | Chromium-based; may work, but not tested. |
+| Safari on iOS | ⚠️ Very limited | `webkitSpeechRecognition` is present but behaves inconsistently. Short sessions only. Requires internet. |
+| Chrome / Edge / Firefox on iOS | ⚠️ Very limited | All iOS browsers are required by Apple to use Safari's WebKit engine, so they share Safari's limitations. |
+
+> **Summary:** On Android, try **Google Chrome** (the standard version, not Samsung Internet or Firefox).
+> On iOS, there is no reliably supported browser at this time; a desktop or laptop computer running Chrome or Edge is strongly recommended.
+
+### Why Chrome and Edge on Android often fail
+
+Chrome on Android sends audio to Google's speech recognition servers.
+Anything that blocks that connection will silently produce no transcript:
+
+- No internet connection or a restricted network (e.g., corporate Wi-Fi, VPN)
+- Microphone permission denied for the site
+- Site accessed over `http://` rather than `https://` (a secure context is required)
+- Battery saver or data-saver modes stopping background network access
+- Google app or Google Play Services restricted by device management policy
+
+### Mobile troubleshooting checklist
+
+1. Use **Google Chrome** (not Samsung Internet, Edge, or Firefox).
+2. Open the site over **HTTPS** — the GitHub Pages URL (`https://mgifford.github.io/EchoLocate/`) works. A plain `http://` URL will not.
+3. When Chrome asks for microphone permission, tap **Allow**.
+4. Make sure you have a working **internet connection** (cellular data or Wi-Fi). Airplane mode will prevent transcription even if the page loads from cache.
+5. If Chrome previously denied microphone access, go to **Chrome Settings → Site Settings → Microphone**, find the site, and change the permission to Allow.
+6. Disable any **VPN or firewall** that might block connections to Google's speech API.
+7. If the screen stays blank after pressing Start, try closing all Chrome tabs and reopening the site.
+
+The app will display a warning banner the first time it detects you are on a mobile browser, summarising these limitations.
 
 ## Contributing
 
