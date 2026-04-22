@@ -704,13 +704,37 @@ const SPEECH_BLOCKED_HTML = `
 const MOBILE_SPEECH_WARNING_HTML = `
   <p>You are using a <strong>mobile browser</strong>.  Speech recognition
   support on mobile devices is limited and may not work reliably.</p>
-  <p>On Android, Chrome's speech recognition requires a network connection
-  to Google's servers — if nothing is transcribed, your device, browser,
-  or network may be blocking it.</p>
+  <p>On Android, Chrome's speech recognition requires a stable connection to
+  Google's servers.  If nothing is transcribed:</p>
+  <ul>
+    <li>Grant <strong>microphone permission</strong> for this site in Chrome,
+        and also in <strong>Android Settings → Apps → Chrome → Permissions</strong></li>
+    <li>Ensure you have a <strong>stable internet connection</strong></li>
+    <li>Close other apps that may be using the microphone</li>
+  </ul>
   <p>For the most reliable experience, use <strong>Google Chrome on a
-  desktop or laptop computer</strong>.  On mobile, make sure you have a
-  stable internet connection and that microphone permission is granted for
-  this site.</p>
+  desktop or laptop computer</strong>.</p>
+`;
+
+const MOBILE_SPEECH_FAILURE_HTML = `
+  <p>Speech recognition has not detected any audio for several sessions.
+  The microphone is open but speech is not reaching the recognition engine —
+  this is a known limitation of Chrome on some Android devices.</p>
+  <p><strong>Steps to try:</strong></p>
+  <ol>
+    <li>Press <strong>Stop</strong>, then <strong>Start</strong> and speak
+        as soon as the status shows <em>Starting…</em></li>
+    <li><strong>Reload the page</strong> and try again — this fully resets
+        the audio system</li>
+    <li>Check that Chrome has microphone permission in
+        <strong>Android Settings → Apps → Chrome → Permissions</strong></li>
+    <li>Close other apps that may be using the microphone (calls, video
+        apps, voice assistants)</li>
+    <li>Make sure you have a stable internet connection — Chrome on Android
+        sends audio to Google's servers for recognition</li>
+  </ol>
+  <p>If none of these help, try <strong>Google Chrome on a desktop or
+  laptop</strong> for the most reliable experience.</p>
 `;
 
 const EDGE_MODAL_DISMISSED_KEY   = 'echolocate-edge-modal-dismissed';
@@ -2449,6 +2473,11 @@ const SpeechEngine = {
       startPitchSampling();
       startLanguageHintTimer();
       showLanguageHint('');
+      // Resume AudioContext if _rawStart() suspended it to give SR priority
+      // access to the microphone on mobile Chrome.
+      if (State.audioCtx && State.audioCtx.state === 'suspended') {
+        State.audioCtx.resume().catch(() => {});
+      }
       if (State.meydaAnalyzer) {
         try {
           State.meydaAnalyzer.start();
@@ -2605,8 +2634,19 @@ const SpeechEngine = {
         if (this._networkRetryCount === 0) {
           if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
             setStatus('restarting', isMobileBrowser()
-              ? 'No speech detected — your device may not support speech recognition'
+              ? 'No speech detected — check microphone settings'
               : 'No speech detected — speak clearly or check microphone');
+            // After extended mobile failures show a help modal with actionable
+            // troubleshooting steps.  The threshold is NO_RESULT_BACKOFF_COUNT * 2
+            // (= 6 with defaults) to give the AudioContext-suspend workaround a few
+            // sessions to take effect before surfacing the guidance dialog.
+            if (isMobileBrowser() && this._noResultCount === CFG.NO_RESULT_BACKOFF_COUNT * 2) {
+              showSpeechHelpModal(
+                '⚠ Mobile: speech not detected',
+                MOBILE_SPEECH_FAILURE_HTML,
+                'info',
+              );
+            }
           } else if (this._noResultCount > 0) {
             setStatus('restarting', 'No speech detected — check microphone');
           } else {
@@ -2652,18 +2692,35 @@ const SpeechEngine = {
     }, CFG.WATCHDOG_MS);
   },
 
-  _rawStart() {
-    // Re-create the SpeechRecognition object before each retry after a network
-    // error.  Edge (and some other Chromium builds) can enter a broken state
-    // after a failed network connection; a fresh instance recovers it.
-    if (this._networkRetryCount > 0) {
-      this.init();
-    }
+  _startRec() {
     try {
       this._rec.start();
     } catch (err) {
       if (err.name !== 'InvalidStateError') setStatus('error', err.message);
     }
+  },
+
+  _rawStart() {
+    // Re-create the SpeechRecognition object before each retry after a network
+    // error or after persistent no-result failures.  Edge (and some other
+    // Chromium builds) can enter a broken state after a failed network
+    // connection; a fresh instance recovers it.  On Android Chrome, re-init
+    // also resets the internal audio capture pipeline which can get stuck.
+    if (this._networkRetryCount > 0 || this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
+      this.init();
+    }
+    // On mobile Chrome, briefly suspend the AudioContext before starting
+    // SpeechRecognition so SR can establish its audio capture path first.
+    // Some Android devices route mic audio exclusively to whichever API
+    // initialises first; suspending the AudioContext temporarily hands that
+    // priority to SR.  The AudioContext is resumed inside rec.onstart once SR
+    // is listening and its pipeline is active.
+    if (isMobileBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
+      console.log('[EchoLocate] Mobile: suspending AudioContext to give SpeechRecognition mic priority');
+      State.audioCtx.suspend().catch(() => {}).finally(() => this._startRec());
+      return;
+    }
+    this._startRec();
   },
 
   async start() {
