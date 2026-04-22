@@ -1054,8 +1054,10 @@ function signatureDescriptor(features) {
   return `${attack}, ${resonance}, ${texture}`;
 }
 
-function clusterLabelFromIndex(n) {
-  return `Guest ${n}`;
+function clusterLabelFromTone(tone) {
+  const word = tone === 'low' ? 'Low' : tone === 'high' ? 'High' : 'Mid';
+  const n = State.profiles.filter((p) => p.tone === tone).length + 1;
+  return `${word} voice ${n}`;
 }
 
 function classifyTone(value) {
@@ -1726,7 +1728,7 @@ function newProfile(pitch, tone) {
   State.nextSpeakerNum += 1;
   return new VoiceProfile({
     id: `s${n}`,
-    label: clusterLabelFromIndex(n),
+    label: clusterLabelFromTone(tone),
     color: PALETTE[(n - 1) % PALETTE.length],
     pitch,
     tone,
@@ -3113,7 +3115,7 @@ async function restoreSession() {
     if (!profile) {
       profile = {
         id: card.speakerId || `s${State.nextSpeakerNum}`,
-        label: card.speakerLabel || clusterLabelFromIndex(State.nextSpeakerNum),
+        label: card.speakerLabel || clusterLabelFromTone(card.tone || 'mid'),
         color: card.speakerColor || PALETTE[(State.nextSpeakerNum - 1) % PALETTE.length],
         lastSpokenAt: card.endedAt || Date.now(),
         avgPitch: card.pitch || 200,
