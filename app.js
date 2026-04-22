@@ -2764,7 +2764,7 @@ const SpeechEngine = {
       return;
     }
     if (isMobileBrowser()) {
-      console.log('[EchoLocate] Mobile: AudioContext state is', State.audioCtx?.state ?? 'none', '— starting SR without suspend');
+      console.log(`[EchoLocate] Mobile: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
     }
     this._startRec();
   },
