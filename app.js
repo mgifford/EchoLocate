@@ -2231,6 +2231,9 @@ const TranscriptCtrl = {
 // messages so that failures are visible on Android where DevTools is unavailable.
 const DebugLog = {
   _entries: [],
+  // Timestamp of last GitHub Issue open — prevents duplicate submissions
+  // from double-tap or multiple rapid clicks on mobile.
+  _lastIssueOpenAt: 0,
 
   /** Convert mixed console arguments to a single string. */
   _fmt(args) {
@@ -2307,10 +2310,11 @@ const DebugLog = {
     }
     return [
       `UA: ${navigator.userAgent}`,
-      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
+      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'} | isMobile: ${isMobileBrowser()}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
       `MicEnergy: ${micEnergyStr}`,
+      `SRRetries: noResult=${SpeechEngine._noResultCount} quickRestart=${SpeechEngine._quickRestartCount} network=${SpeechEngine._networkRetryCount}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
       `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
       `Speakers: ${State.profiles.length} active — ${profilesStr}`,
@@ -2400,6 +2404,11 @@ const DebugLog = {
    * would exceed GitHub's effective limit (~8 000 encoded characters).
    */
   openGitHubIssue() {
+    // Prevent duplicate submissions from double-tap or rapid clicks on mobile.
+    const now = Date.now();
+    if (now - this._lastIssueOpenAt < 3000) return;
+    this._lastIssueOpenAt = now;
+
     const BASE_URL   = 'https://github.com/mgifford/EchoLocate/issues/new';
     const MAX_URL    = 8000; // conservative safe limit for GitHub URLs
     const TITLE_PART = '?title=' + encodeURIComponent('Bug Report') + '&body=';
@@ -2744,11 +2753,18 @@ const SpeechEngine = {
     // Some Android devices route mic audio exclusively to whichever API
     // initialises first; suspending the AudioContext temporarily hands that
     // priority to SR.  The AudioContext is resumed inside rec.onstart once SR
-    // is listening and its pipeline is active.
+    // is listening and its pipeline is active.  A short delay after the
+    // suspend gives the Android audio hardware time to settle before SR begins.
     if (isMobileBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
       console.log('[EchoLocate] Mobile: suspending AudioContext to give SpeechRecognition mic priority');
-      State.audioCtx.suspend().catch(() => {}).finally(() => this._startRec());
+      State.audioCtx.suspend()
+        .catch(() => {})
+        .then(() => new Promise(resolve => setTimeout(resolve, 200)))
+        .then(() => this._startRec());
       return;
+    }
+    if (isMobileBrowser()) {
+      console.log(`[EchoLocate] Mobile: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
     }
     this._startRec();
   },
