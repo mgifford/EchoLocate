@@ -41,6 +41,14 @@ const CFG = Object.freeze({
   // than QUICK_RESTART_THRESHOLD_MS), apply exponential backoff and surface a
   // helpful status message so the user knows to check their microphone.
   NO_RESULT_BACKOFF_COUNT:    3,
+  // After this many consecutive no-result sessions on mobile (= NO_RESULT_BACKOFF_COUNT * 2),
+  // show the "speech not detected" help modal with actionable troubleshooting steps.
+  MOBILE_FAILURE_MODAL_COUNT: 6,
+  // Minimum RMS energy value (0–100 scale from channelEnergy()) to consider the
+  // microphone "active".  Values above this threshold mean the waveform is moving
+  // and audio is reaching the AudioContext, which distinguishes mic-works-but-SR-silent
+  // from genuinely no audio.
+  MIC_ENERGY_ACTIVE_THRESHOLD: 1,
   // Minimum ratio of system-audio energy to mic energy required to attribute
   // a card to the computer source rather than the microphone.  A value of 1.5
   // means the computer audio must be 50 % louder than the mic before we call
@@ -718,8 +726,10 @@ const MOBILE_SPEECH_WARNING_HTML = `
 
 const MOBILE_SPEECH_FAILURE_HTML = `
   <p>Speech recognition has not detected any audio for several sessions.
-  The microphone is open but speech is not reaching the recognition engine —
-  this is a known limitation of Chrome on some Android devices.</p>
+  If the <strong>waveform bar at the bottom of the screen moves</strong> when
+  you speak, the microphone is working — but audio is not reaching the
+  recognition engine.  This is a known conflict between the audio waveform
+  display and Chrome's speech recognition on some Android devices.</p>
   <p><strong>Steps to try:</strong></p>
   <ol>
     <li>Press <strong>Stop</strong>, then <strong>Start</strong> and speak
@@ -2287,11 +2297,20 @@ const DebugLog = {
     const profilesStr = State.profiles.length
       ? State.profiles.map((p) => `${p.id}(${p.avgPitch.toFixed(0)}Hz,${p.matchLevel})`).join(', ')
       : 'none';
+    // Sample current mic energy so the report shows whether the waveform
+    // was active at the time the report was generated.  A non-zero value
+    // confirms that audio is reaching the AudioContext even if SR is silent.
+    let micEnergyStr = 'n/a';
+    if (State.analyser) {
+      const e = channelEnergy(State.analyser);
+      micEnergyStr = e > CFG.MIC_ENERGY_ACTIVE_THRESHOLD ? `active (${e.toFixed(1)})` : `silent (${e.toFixed(1)})`;
+    }
     return [
       `UA: ${navigator.userAgent}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
+      `MicEnergy: ${micEnergyStr}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
       `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
       `Speakers: ${State.profiles.length} active — ${profilesStr}`,
@@ -2618,9 +2637,20 @@ const SpeechEngine = {
                   CFG.NETWORK_BACKOFF_INIT_MS * (2 ** (backoffStep - 1)),
                   CFG.NETWORK_BACKOFF_MAX_MS,
                 );
-                console.warn(
-                  `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — no-result backoff (next retry in ${delay}ms)`,
-                );
+                // Check whether mic audio is actually reaching the AudioContext.
+                // If energy is non-zero the waveform is moving but SR received
+                // nothing — that is a clear AudioContext / SR routing conflict,
+                // which is very actionable for debugging on Android Chrome.
+                const micE = State.analyser ? channelEnergy(State.analyser) : 0;
+                if (micE > CFG.MIC_ENERGY_ACTIVE_THRESHOLD) {
+                  console.warn(
+                    `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy active (${micE.toFixed(1)}): waveform shows audio but SR received nothing — likely AudioContext/SR mic routing conflict (next retry in ${delay}ms)`,
+                  );
+                } else {
+                  console.warn(
+                    `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy silent (${micE.toFixed(1)}): no audio reaching AudioContext or SR (next retry in ${delay}ms)`,
+                  );
+                }
               } else {
                 delay = CFG.RESTART_DELAY;
               }
@@ -2637,10 +2667,10 @@ const SpeechEngine = {
               ? 'No speech detected — check microphone settings'
               : 'No speech detected — speak clearly or check microphone');
             // After extended mobile failures show a help modal with actionable
-            // troubleshooting steps.  The threshold is NO_RESULT_BACKOFF_COUNT * 2
-            // (= 6 with defaults) to give the AudioContext-suspend workaround a few
-            // sessions to take effect before surfacing the guidance dialog.
-            if (isMobileBrowser() && this._noResultCount === CFG.NO_RESULT_BACKOFF_COUNT * 2) {
+            // troubleshooting steps.  CFG.MOBILE_FAILURE_MODAL_COUNT gives the
+            // AudioContext-suspend workaround a few sessions to take effect
+            // before surfacing the guidance dialog.
+            if (isMobileBrowser() && this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT) {
               showSpeechHelpModal(
                 '⚠ Mobile: speech not detected',
                 MOBILE_SPEECH_FAILURE_HTML,
