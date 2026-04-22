@@ -41,6 +41,14 @@ const CFG = Object.freeze({
   // than QUICK_RESTART_THRESHOLD_MS), apply exponential backoff and surface a
   // helpful status message so the user knows to check their microphone.
   NO_RESULT_BACKOFF_COUNT:    3,
+  // After this many consecutive no-result sessions on mobile (= NO_RESULT_BACKOFF_COUNT * 2),
+  // show the "speech not detected" help modal with actionable troubleshooting steps.
+  MOBILE_FAILURE_MODAL_COUNT: 6,
+  // Minimum RMS energy value (0–100 scale from channelEnergy()) to consider the
+  // microphone "active".  Values above this threshold mean the waveform is moving
+  // and audio is reaching the AudioContext, which distinguishes mic-works-but-SR-silent
+  // from genuinely no audio.
+  MIC_ENERGY_ACTIVE_THRESHOLD: 1,
   // Minimum ratio of system-audio energy to mic energy required to attribute
   // a card to the computer source rather than the microphone.  A value of 1.5
   // means the computer audio must be 50 % louder than the mic before we call
@@ -704,13 +712,39 @@ const SPEECH_BLOCKED_HTML = `
 const MOBILE_SPEECH_WARNING_HTML = `
   <p>You are using a <strong>mobile browser</strong>.  Speech recognition
   support on mobile devices is limited and may not work reliably.</p>
-  <p>On Android, Chrome's speech recognition requires a network connection
-  to Google's servers — if nothing is transcribed, your device, browser,
-  or network may be blocking it.</p>
+  <p>On Android, Chrome's speech recognition requires a stable connection to
+  Google's servers.  If nothing is transcribed:</p>
+  <ul>
+    <li>Grant <strong>microphone permission</strong> for this site in Chrome,
+        and also in <strong>Android Settings → Apps → Chrome → Permissions</strong></li>
+    <li>Ensure you have a <strong>stable internet connection</strong></li>
+    <li>Close other apps that may be using the microphone</li>
+  </ul>
   <p>For the most reliable experience, use <strong>Google Chrome on a
-  desktop or laptop computer</strong>.  On mobile, make sure you have a
-  stable internet connection and that microphone permission is granted for
-  this site.</p>
+  desktop or laptop computer</strong>.</p>
+`;
+
+const MOBILE_SPEECH_FAILURE_HTML = `
+  <p>Speech recognition has not detected any audio for several sessions.
+  If the <strong>waveform bar at the bottom of the screen moves</strong> when
+  you speak, the microphone is working — but audio is not reaching the
+  recognition engine.  This is a known conflict between the audio waveform
+  display and Chrome's speech recognition on some Android devices.</p>
+  <p><strong>Steps to try:</strong></p>
+  <ol>
+    <li>Press <strong>Stop</strong>, then <strong>Start</strong> and speak
+        as soon as the status shows <em>Starting…</em></li>
+    <li><strong>Reload the page</strong> and try again — this fully resets
+        the audio system</li>
+    <li>Check that Chrome has microphone permission in
+        <strong>Android Settings → Apps → Chrome → Permissions</strong></li>
+    <li>Close other apps that may be using the microphone (calls, video
+        apps, voice assistants)</li>
+    <li>Make sure you have a stable internet connection — Chrome on Android
+        sends audio to Google's servers for recognition</li>
+  </ol>
+  <p>If none of these help, try <strong>Google Chrome on a desktop or
+  laptop</strong> for the most reliable experience.</p>
 `;
 
 const EDGE_MODAL_DISMISSED_KEY   = 'echolocate-edge-modal-dismissed';
@@ -2263,11 +2297,20 @@ const DebugLog = {
     const profilesStr = State.profiles.length
       ? State.profiles.map((p) => `${p.id}(${p.avgPitch.toFixed(0)}Hz,${p.matchLevel})`).join(', ')
       : 'none';
+    // Sample current mic energy so the report shows whether the waveform
+    // was active at the time the report was generated.  A non-zero value
+    // confirms that audio is reaching the AudioContext even if SR is silent.
+    let micEnergyStr = 'n/a';
+    if (State.analyser) {
+      const e = channelEnergy(State.analyser);
+      micEnergyStr = e > CFG.MIC_ENERGY_ACTIVE_THRESHOLD ? `active (${e.toFixed(1)})` : `silent (${e.toFixed(1)})`;
+    }
     return [
       `UA: ${navigator.userAgent}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
+      `MicEnergy: ${micEnergyStr}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
       `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
       `Speakers: ${State.profiles.length} active — ${profilesStr}`,
@@ -2449,6 +2492,11 @@ const SpeechEngine = {
       startPitchSampling();
       startLanguageHintTimer();
       showLanguageHint('');
+      // Resume AudioContext if _rawStart() suspended it to give SR priority
+      // access to the microphone on mobile Chrome.
+      if (State.audioCtx && State.audioCtx.state === 'suspended') {
+        State.audioCtx.resume().catch(() => {});
+      }
       if (State.meydaAnalyzer) {
         try {
           State.meydaAnalyzer.start();
@@ -2589,9 +2637,20 @@ const SpeechEngine = {
                   CFG.NETWORK_BACKOFF_INIT_MS * (2 ** (backoffStep - 1)),
                   CFG.NETWORK_BACKOFF_MAX_MS,
                 );
-                console.warn(
-                  `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — no-result backoff (next retry in ${delay}ms)`,
-                );
+                // Check whether mic audio is actually reaching the AudioContext.
+                // If energy is non-zero the waveform is moving but SR received
+                // nothing — that is a clear AudioContext / SR routing conflict,
+                // which is very actionable for debugging on Android Chrome.
+                const micE = State.analyser ? channelEnergy(State.analyser) : 0;
+                if (micE > CFG.MIC_ENERGY_ACTIVE_THRESHOLD) {
+                  console.warn(
+                    `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy active (${micE.toFixed(1)}): waveform shows audio but SR received nothing — likely AudioContext/SR mic routing conflict (next retry in ${delay}ms)`,
+                  );
+                } else {
+                  console.warn(
+                    `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy silent (${micE.toFixed(1)}): no audio reaching AudioContext or SR (next retry in ${delay}ms)`,
+                  );
+                }
               } else {
                 delay = CFG.RESTART_DELAY;
               }
@@ -2605,8 +2664,19 @@ const SpeechEngine = {
         if (this._networkRetryCount === 0) {
           if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
             setStatus('restarting', isMobileBrowser()
-              ? 'No speech detected — your device may not support speech recognition'
+              ? 'No speech detected — check microphone settings'
               : 'No speech detected — speak clearly or check microphone');
+            // After extended mobile failures show a help modal with actionable
+            // troubleshooting steps.  CFG.MOBILE_FAILURE_MODAL_COUNT gives the
+            // AudioContext-suspend workaround a few sessions to take effect
+            // before surfacing the guidance dialog.
+            if (isMobileBrowser() && this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT) {
+              showSpeechHelpModal(
+                '⚠ Mobile: speech not detected',
+                MOBILE_SPEECH_FAILURE_HTML,
+                'info',
+              );
+            }
           } else if (this._noResultCount > 0) {
             setStatus('restarting', 'No speech detected — check microphone');
           } else {
@@ -2652,18 +2722,35 @@ const SpeechEngine = {
     }, CFG.WATCHDOG_MS);
   },
 
-  _rawStart() {
-    // Re-create the SpeechRecognition object before each retry after a network
-    // error.  Edge (and some other Chromium builds) can enter a broken state
-    // after a failed network connection; a fresh instance recovers it.
-    if (this._networkRetryCount > 0) {
-      this.init();
-    }
+  _startRec() {
     try {
       this._rec.start();
     } catch (err) {
       if (err.name !== 'InvalidStateError') setStatus('error', err.message);
     }
+  },
+
+  _rawStart() {
+    // Re-create the SpeechRecognition object before each retry after a network
+    // error or after persistent no-result failures.  Edge (and some other
+    // Chromium builds) can enter a broken state after a failed network
+    // connection; a fresh instance recovers it.  On Android Chrome, re-init
+    // also resets the internal audio capture pipeline which can get stuck.
+    if (this._networkRetryCount > 0 || this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
+      this.init();
+    }
+    // On mobile Chrome, briefly suspend the AudioContext before starting
+    // SpeechRecognition so SR can establish its audio capture path first.
+    // Some Android devices route mic audio exclusively to whichever API
+    // initialises first; suspending the AudioContext temporarily hands that
+    // priority to SR.  The AudioContext is resumed inside rec.onstart once SR
+    // is listening and its pipeline is active.
+    if (isMobileBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
+      console.log('[EchoLocate] Mobile: suspending AudioContext to give SpeechRecognition mic priority');
+      State.audioCtx.suspend().catch(() => {}).finally(() => this._startRec());
+      return;
+    }
+    this._startRec();
   },
 
   async start() {
