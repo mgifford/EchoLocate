@@ -603,9 +603,42 @@ function isEdgeBrowser() {
   return /Edg\//.test(navigator.userAgent);
 }
 
+function isChromeBrowser() {
+  // Detect Chrome (including Chrome on Android), but not Edge (which also
+  // includes "Chrome/" in its UA string).
+  return /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
+}
+
 function isMobileBrowser() {
   // Detect mobile browsers (Android, iPhone, iPad, iPod).
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function parseBrowserName() {
+  // Returns a short human-readable browser + platform label for debug reports,
+  // e.g. "Chrome 147 on Android", "Edge 125 on Windows", "Firefox 115".
+  const ua = navigator.userAgent;
+  if (/Edg\//.test(ua)) {
+    const m = ua.match(/Edg\/([\d]+)/);
+    return m ? `Edge ${m[1]}` : 'Edge';
+  }
+  if (/Chrome\//.test(ua)) {
+    const m = ua.match(/Chrome\/([\d]+)/);
+    const name = m ? `Chrome ${m[1]}` : 'Chrome';
+    if (/Android/.test(ua)) return `${name} on Android`;
+    if (/iPhone|iPad|iPod/.test(ua)) return `${name} on iOS`;
+    return name;
+  }
+  if (/Firefox\//.test(ua)) {
+    const m = ua.match(/Firefox\/([\d]+)/);
+    return m ? `Firefox ${m[1]}` : 'Firefox';
+  }
+  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) {
+    const m = ua.match(/Version\/([\d]+)/);
+    if (/iPhone|iPad|iPod/.test(ua)) return m ? `Safari ${m[1]} on iOS` : 'Safari on iOS';
+    return m ? `Safari ${m[1]}` : 'Safari';
+  }
+  return 'Unknown';
 }
 
 function checkBrowserSupport() {
@@ -744,6 +777,27 @@ const MOBILE_SPEECH_FAILURE_HTML = `
         sends audio to Google's servers for recognition</li>
   </ol>
   <p>If none of these help, try <strong>Google Chrome on a desktop or
+  laptop</strong> for the most reliable experience.</p>
+`;
+
+const MOBILE_CHROME_NETWORK_ERROR_HTML = `
+  <p>You are using <strong>Chrome on Android</strong>, which sends speech
+  audio to Google's servers over the internet.  Network errors mean Chrome
+  could not reach those servers.</p>
+  <p><strong>Steps to try:</strong></p>
+  <ol>
+    <li>Check that you have a <strong>stable internet connection</strong>
+        (Wi-Fi or mobile data)</li>
+    <li>Make sure this site is <strong>not open in an Incognito window</strong>
+        — Chrome on Android blocks speech recognition in Incognito mode</li>
+    <li>Go to <strong>Android Settings → Apps → Chrome → Permissions</strong>
+        and confirm the <strong>Microphone</strong> permission is granted</li>
+    <li>Close any other apps that may be using the microphone (calls, video
+        apps, voice assistants)</li>
+    <li><strong>Reload the page</strong> and press <strong>Start</strong>
+        again</li>
+  </ol>
+  <p>If the problem persists, try <strong>Google Chrome on a desktop or
   laptop</strong> for the most reliable experience.</p>
 `;
 
@@ -2310,6 +2364,7 @@ const DebugLog = {
     }
     return [
       `UA: ${navigator.userAgent}`,
+      `Browser: ${parseBrowserName()}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'} | isMobile: ${isMobileBrowser()}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
@@ -2588,6 +2643,12 @@ const SpeechEngine = {
                 EDGE_SETUP_HTML,
               );
               msg = 'Edge speech recognition blocked — see the help dialog';
+            } else if (isMobileBrowser() && isChromeBrowser()) {
+              showSpeechHelpModal(
+                '⚠ Chrome: speech recognition network error',
+                MOBILE_CHROME_NETWORK_ERROR_HTML,
+              );
+              msg = 'Chrome speech network error — see the help dialog';
             } else {
               showSpeechHelpModal(
                 '⚠ Speech recognition blocked',
