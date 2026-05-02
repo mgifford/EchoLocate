@@ -2535,6 +2535,11 @@ const SpeechEngine = {
   // but still produced no onresult (mobile Chrome's ~5 s no-speech timeout).
   _noResultCount: 0,
   _sessionHadResult: false,
+  // True if the current recognition session fired a 'network' error.
+  // Reset on each session start so onend can tell whether this session
+  // was clean (no network error) and reset the backoff if connectivity
+  // appears to have recovered.
+  _sessionHadNetworkError: false,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2551,6 +2556,7 @@ const SpeechEngine = {
       console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
       this._lastStartedAt = Date.now();
       this._sessionHadResult = false;
+      this._sessionHadNetworkError = false;
       State.profilingStartedAt = Date.now();
       updateProfilingStatus();
       startPitchSampling();
@@ -2609,6 +2615,7 @@ const SpeechEngine = {
         return;
       }
       if (event.error === 'network') {
+        this._sessionHadNetworkError = true;
         if (!navigator.onLine) {
           console.warn('[EchoLocate] Network error while offline — suspending recognition until connection returns');
           setStatus('error', 'Offline — will resume when connection returns');
@@ -2679,8 +2686,21 @@ const SpeechEngine = {
       if (State.isRunning) {
         let delay;
         if (this._networkRetryCount > 0) {
-          // Network-error backoff takes priority.
-          delay = this._networkRetryDelay;
+          // If this session ran long enough without a new network error,
+          // connectivity has likely recovered — reset the backoff and treat
+          // it like a normal restart.  This prevents the exponential delay
+          // from persisting across clean sessions on intermittent mobile
+          // connections (e.g. Android Chrome on cellular).
+          const sessionMs = this._lastStartedAt ? Date.now() - this._lastStartedAt : 0;
+          if (!this._sessionHadNetworkError && sessionMs >= CFG.QUICK_RESTART_THRESHOLD_MS) {
+            console.log('[EchoLocate] Session ran cleanly after network errors — resetting network retry state');
+            this._networkRetryCount = 0;
+            this._networkRetryDelay = CFG.NETWORK_BACKOFF_INIT_MS;
+            delay = CFG.RESTART_DELAY;
+          } else {
+            // Network-error backoff takes priority.
+            delay = this._networkRetryDelay;
+          }
         } else {
           // Check whether the session ended too quickly without producing any
           // results (e.g. Android Chrome firing no-speech immediately).
@@ -2870,6 +2890,7 @@ const SpeechEngine = {
     this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
     this._noResultCount = 0;
     this._sessionHadResult = false;
+    this._sessionHadNetworkError = false;
     if (this._offlineHandler) {
       window.removeEventListener('online', this._offlineHandler);
       this._offlineHandler = null;
