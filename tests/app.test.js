@@ -1016,3 +1016,120 @@ describe('isMobileBrowser', () => {
     assert.equal(fn(), false);
   });
 });
+
+// ── isChromeBrowser ───────────────────────────────────────────────────────────
+
+describe('isChromeBrowser', () => {
+  const fn = ctx.isChromeBrowser;
+  const savedUA = ctx.navigator.userAgent;
+
+  const withUA = (ua, cb) => {
+    ctx.navigator.userAgent = ua;
+    try { return cb(); } finally { ctx.navigator.userAgent = savedUA; }
+  };
+
+  it('returns true for Android Chrome mobile UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36',
+      fn,
+    ), true);
+  });
+
+  it('returns true for desktop Chrome UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      fn,
+    ), true);
+  });
+
+  it('returns false for Edge UA (which also contains Chrome/)', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+      fn,
+    ), false);
+  });
+
+  it('returns false for Firefox UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+      fn,
+    ), false);
+  });
+
+  it('returns false for Safari UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      fn,
+    ), false);
+  });
+
+  it('returns false for the generic test UA', () => {
+    assert.equal(fn(), false);
+  });
+});
+
+// ── parseBrowserName ──────────────────────────────────────────────────────────
+
+describe('parseBrowserName', () => {
+  const fn = ctx.parseBrowserName;
+  const savedUA = ctx.navigator.userAgent;
+
+  const withUA = (ua, cb) => {
+    ctx.navigator.userAgent = ua;
+    try { return cb(); } finally { ctx.navigator.userAgent = savedUA; }
+  };
+
+  it('returns "Chrome <version> on Android" for Android Chrome UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Mobile Safari/537.36',
+      fn,
+    ), 'Chrome 147 on Android');
+  });
+
+  it('returns "Chrome <version>" for desktop Chrome UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      fn,
+    ), 'Chrome 120');
+  });
+
+  it('returns "Safari on iOS" for Chrome on iOS UA (CriOS uses Safari engine, no Version token)', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1',
+      fn,
+    ), 'Safari on iOS');
+  });
+
+  it('returns "Edge <version>" for Edge UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.2210.91',
+      fn,
+    ), 'Edge 120');
+  });
+
+  it('returns "Firefox <version>" for Firefox UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0',
+      fn,
+    ), 'Firefox 115');
+  });
+
+  it('returns "Safari <version> on iOS" for Safari on iPhone UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      fn,
+    ), 'Safari 17 on iOS');
+  });
+
+  it('returns "Safari <version>" for desktop Safari UA', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      fn,
+    ), 'Safari 17');
+  });
+
+  it('returns "Unknown" for unrecognised UA', () => {
+    assert.equal(withUA('Some/1.0 UnknownBrowser/2.0', fn), 'Unknown');
+  });
+});
+
