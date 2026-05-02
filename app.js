@@ -633,7 +633,7 @@ function parseBrowserName() {
     const m = ua.match(/Firefox\/([\d]+)/);
     return m ? `Firefox ${m[1]}` : 'Firefox';
   }
-  if (/Safari\//.test(ua)) {
+  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) {
     const m = ua.match(/Version\/([\d]+)/);
     if (/iPhone|iPad|iPod/.test(ua)) return m ? `Safari ${m[1]} on iOS` : 'Safari on iOS';
     return m ? `Safari ${m[1]}` : 'Safari';
