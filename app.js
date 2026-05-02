@@ -2540,6 +2540,11 @@ const SpeechEngine = {
   // was clean (no network error) and reset the backoff if connectivity
   // appears to have recovered.
   _sessionHadNetworkError: false,
+  // True if the mobile speech-failure help modal has already been shown in
+  // this session.  Prevents a second pop-up when the early routing-conflict
+  // detection fires at NO_RESULT_BACKOFF_COUNT and the generic fallback would
+  // also fire later at MOBILE_FAILURE_MODAL_COUNT.
+  _mobileHelpShown: false,
 
   init() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2584,6 +2589,7 @@ const SpeechEngine = {
       this._quickRestartCount = 0;
       this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
       this._noResultCount = 0;
+      this._mobileHelpShown = false;
       this._sessionHadResult = true;
       State.lastResultAt = Date.now();
       let interim = '';
@@ -2736,6 +2742,19 @@ const SpeechEngine = {
                   console.warn(
                     `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy active (${micE.toFixed(1)}): waveform shows audio but SR received nothing — likely AudioContext/SR mic routing conflict (next retry in ${delay}ms)`,
                   );
+                  // Routing conflict confirmed: surface the help modal immediately
+                  // at the first backoff step so the user gets actionable guidance
+                  // without waiting for MOBILE_FAILURE_MODAL_COUNT sessions.
+                  if (isMobileBrowser()
+                      && this._noResultCount === CFG.NO_RESULT_BACKOFF_COUNT
+                      && !this._mobileHelpShown) {
+                    this._mobileHelpShown = true;
+                    showSpeechHelpModal(
+                      '⚠ Mobile: audio routing conflict detected',
+                      MOBILE_SPEECH_FAILURE_HTML,
+                      'info',
+                    );
+                  }
                 } else {
                   console.warn(
                     `[EchoLocate] No speech in ${this._noResultCount} consecutive sessions — mic energy silent (${micE.toFixed(1)}): no audio reaching AudioContext or SR (next retry in ${delay}ms)`,
@@ -2759,8 +2778,11 @@ const SpeechEngine = {
             // After extended mobile failures show a help modal with actionable
             // troubleshooting steps.  CFG.MOBILE_FAILURE_MODAL_COUNT gives the
             // AudioContext-suspend workaround a few sessions to take effect
-            // before surfacing the guidance dialog.
-            if (isMobileBrowser() && this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT) {
+            // before surfacing the guidance dialog when the routing conflict
+            // was not clearly identified earlier (e.g. mic energy was silent).
+            if (isMobileBrowser() && this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT
+                && !this._mobileHelpShown) {
+              this._mobileHelpShown = true;
               showSpeechHelpModal(
                 '⚠ Mobile: speech not detected',
                 MOBILE_SPEECH_FAILURE_HTML,
@@ -2891,6 +2913,7 @@ const SpeechEngine = {
     this._noResultCount = 0;
     this._sessionHadResult = false;
     this._sessionHadNetworkError = false;
+    this._mobileHelpShown = false;
     if (this._offlineHandler) {
       window.removeEventListener('online', this._offlineHandler);
       this._offlineHandler = null;
