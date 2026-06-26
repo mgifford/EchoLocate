@@ -801,6 +801,29 @@ const MOBILE_CHROME_NETWORK_ERROR_HTML = `
   laptop</strong> for the most reliable experience.</p>
 `;
 
+const DESKTOP_CHROME_CONFLICT_HTML = `
+  <p>Speech recognition has not detected any audio for several sessions,
+  but the <strong>waveform is moving</strong> — meaning the microphone is
+  working and audio <em>is</em> reaching the visualiser.  This is a known
+  conflict between Chrome's Web Audio API and its speech recognition engine
+  that affects some versions of Chrome on desktop.</p>
+  <p><strong>Steps to try:</strong></p>
+  <ol>
+    <li>Press <strong>Stop</strong>, then <strong>Start</strong> and speak
+        as soon as the status shows <em>Starting…</em></li>
+    <li><strong>Reload the page</strong> and try again — this fully resets
+        the audio system</li>
+    <li>Close other tabs or apps that may be using the microphone (video
+        calls, recording software, voice assistants)</li>
+    <li>Check that Chrome has microphone permission for this site in
+        <strong>chrome://settings/content/microphone</strong></li>
+    <li>Try disabling browser extensions one at a time — some extensions
+        intercept audio in ways that block speech recognition</li>
+    <li>Switch to <strong>Chrome Canary</strong> or update Chrome to the
+        latest version, as this conflict was fixed in newer builds</li>
+  </ol>
+`;
+
 const EDGE_MODAL_DISMISSED_KEY   = 'echolocate-edge-modal-dismissed';
 const MOBILE_MODAL_DISMISSED_KEY = 'echolocate-mobile-modal-dismissed';
 
@@ -2362,14 +2385,39 @@ const DebugLog = {
       const e = channelEnergy(State.analyser);
       micEnergyStr = e > CFG.MIC_ENERGY_ACTIVE_THRESHOLD ? `active (${e.toFixed(1)})` : `silent (${e.toFixed(1)})`;
     }
+
+    // Time since the last speech result — helps distinguish "user stopped
+    // talking" from "SR is failing silently".
+    const lastResultAgo = State.lastResultAt
+      ? `${Math.round((Date.now() - State.lastResultAt) / 1000)}s ago`
+      : 'never';
+
+    // Indicate whether the AudioContext-suspend workaround is in use.
+    // Shows 'applied' when Chrome is active and the AudioContext exists,
+    // 'n/a' for non-Chrome browsers that never need the suspend.
+    const suspendWorkaround = isChromeBrowser()
+      ? (ctx ? `applied (ctx: ${ctx.state})` : 'pending (no AudioCtx yet)')
+      : 'n/a (non-Chrome)';
+
+    // Show current backoff state so a report immediately reveals whether
+    // the engine is in a retry loop and how far into the backoff it is.
+    const se = SpeechEngine;
+    const retryStr = [
+      `noResult=${se._noResultCount}`,
+      `quickRestart=${se._quickRestartCount} delay:${se._quickRestartDelay}ms`,
+      `network=${se._networkRetryCount}`,
+      `onStartFired=${se._sessionHadOnStart}`,
+    ].join(' | ');
+
     return [
       `UA: ${navigator.userAgent}`,
-      `Browser: ${parseBrowserName()}`,
-      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'} | isMobile: ${isMobileBrowser()}`,
+      `Browser: ${parseBrowserName()} | isChrome: ${isChromeBrowser()} | isEdge: ${isEdgeBrowser()} | isMobile: ${isMobileBrowser()}`,
+      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
-      `MicEnergy: ${micEnergyStr}`,
-      `SRRetries: noResult=${SpeechEngine._noResultCount} quickRestart=${SpeechEngine._quickRestartCount} network=${SpeechEngine._networkRetryCount}`,
+      `MicEnergy: ${micEnergyStr} | LastResult: ${lastResultAgo}`,
+      `SuspendWorkaround: ${suspendWorkaround}`,
+      `SRRetries: ${retryStr}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
       `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
       `Speakers: ${State.profiles.length} active — ${profilesStr}`,
@@ -2531,6 +2579,12 @@ const SpeechEngine = {
   _quickRestartCount: 0,
   _quickRestartDelay: CFG.NETWORK_BACKOFF_INIT_MS,
   _lastStartedAt: 0,
+  // True if rec.onstart fired for the current/last recognition session.
+  // Cleared before each rec.start() call; set inside rec.onstart.
+  // When onend fires with this still false the browser terminated the
+  // session before the audio pipeline was ever established — a clear sign
+  // of the AudioContext / SR mic routing conflict seen in Chrome ≤ 149.
+  _sessionHadOnStart: false,
   // Tracks consecutive sessions that lasted longer than QUICK_RESTART_THRESHOLD_MS
   // but still produced no onresult (mobile Chrome's ~5 s no-speech timeout).
   _noResultCount: 0,
@@ -2540,10 +2594,11 @@ const SpeechEngine = {
   // was clean (no network error) and reset the backoff if connectivity
   // appears to have recovered.
   _sessionHadNetworkError: false,
-  // True if the mobile speech-failure help modal has already been shown in
-  // this session.  Prevents a second pop-up when the early routing-conflict
-  // detection fires at NO_RESULT_BACKOFF_COUNT and the generic fallback would
-  // also fire later at MOBILE_FAILURE_MODAL_COUNT.
+  // True if a speech-failure help modal has already been shown in this run.
+  // Prevents a second pop-up when the early routing-conflict detection fires
+  // at NO_RESULT_BACKOFF_COUNT and the generic fallback would also fire later
+  // at MOBILE_FAILURE_MODAL_COUNT.  Shared between mobile and desktop Chrome
+  // routing-conflict paths.
   _mobileHelpShown: false,
 
   init() {
@@ -2560,6 +2615,7 @@ const SpeechEngine = {
     rec.onstart = () => {
       console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
       this._lastStartedAt = Date.now();
+      this._sessionHadOnStart = true;
       this._sessionHadResult = false;
       this._sessionHadNetworkError = false;
       State.profilingStartedAt = Date.now();
@@ -2688,6 +2744,12 @@ const SpeechEngine = {
 
     rec.onend = () => {
       console.log('[EchoLocate] SpeechRecognition ended — isRunning:', State.isRunning);
+      // If onstart never fired the browser terminated the session before the
+      // audio pipeline was established — the clearest sign of an AudioContext /
+      // SR mic routing conflict (seen on Chrome ≤ 149, some Android builds).
+      if (!this._sessionHadOnStart) {
+        console.warn('[EchoLocate] SR ended without onstart — browser may have rejected mic access (AudioContext/SR routing conflict)');
+      }
       clearTimeout(this._watchdogTimer);
       if (State.isRunning) {
         let delay;
@@ -2745,15 +2807,22 @@ const SpeechEngine = {
                   // Routing conflict confirmed: surface the help modal immediately
                   // at the first backoff step so the user gets actionable guidance
                   // without waiting for MOBILE_FAILURE_MODAL_COUNT sessions.
-                  if (isMobileBrowser()
-                      && this._noResultCount === CFG.NO_RESULT_BACKOFF_COUNT
+                  if (this._noResultCount === CFG.NO_RESULT_BACKOFF_COUNT
                       && !this._mobileHelpShown) {
                     this._mobileHelpShown = true;
-                    showSpeechHelpModal(
-                      '⚠ Mobile: audio routing conflict detected',
-                      MOBILE_SPEECH_FAILURE_HTML,
-                      'info',
-                    );
+                    if (isMobileBrowser()) {
+                      showSpeechHelpModal(
+                        '⚠ Mobile: audio routing conflict detected',
+                        MOBILE_SPEECH_FAILURE_HTML,
+                        'info',
+                      );
+                    } else if (isChromeBrowser()) {
+                      showSpeechHelpModal(
+                        '⚠ Chrome: audio routing conflict detected',
+                        DESKTOP_CHROME_CONFLICT_HTML,
+                        'info',
+                      );
+                    }
                   }
                 } else {
                   console.warn(
@@ -2772,22 +2841,37 @@ const SpeechEngine = {
         console.log(`[EchoLocate] Scheduling restart in ${delay}ms (networkRetries: ${this._networkRetryCount})`);
         if (this._networkRetryCount === 0) {
           if (this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
-            setStatus('restarting', isMobileBrowser()
-              ? 'No speech detected — check microphone settings'
-              : 'No speech detected — speak clearly or check microphone');
-            // After extended mobile failures show a help modal with actionable
+            // Tailor the status message to provide the most useful hint by platform.
+            let noSpeechStatus;
+            if (isMobileBrowser()) {
+              noSpeechStatus = 'No speech detected — check microphone settings';
+            } else if (isChromeBrowser()) {
+              noSpeechStatus = 'No speech detected — try reloading or disabling extensions';
+            } else {
+              noSpeechStatus = 'No speech detected — speak clearly or check microphone';
+            }
+            setStatus('restarting', noSpeechStatus);
+            // After extended failures show a help modal with actionable
             // troubleshooting steps.  CFG.MOBILE_FAILURE_MODAL_COUNT gives the
             // AudioContext-suspend workaround a few sessions to take effect
             // before surfacing the guidance dialog when the routing conflict
             // was not clearly identified earlier (e.g. mic energy was silent).
-            if (isMobileBrowser() && this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT
+            if (this._noResultCount === CFG.MOBILE_FAILURE_MODAL_COUNT
                 && !this._mobileHelpShown) {
               this._mobileHelpShown = true;
-              showSpeechHelpModal(
-                '⚠ Mobile: speech not detected',
-                MOBILE_SPEECH_FAILURE_HTML,
-                'info',
-              );
+              if (isMobileBrowser()) {
+                showSpeechHelpModal(
+                  '⚠ Mobile: speech not detected',
+                  MOBILE_SPEECH_FAILURE_HTML,
+                  'info',
+                );
+              } else if (isChromeBrowser()) {
+                showSpeechHelpModal(
+                  '⚠ Chrome: speech not detected',
+                  DESKTOP_CHROME_CONFLICT_HTML,
+                  'info',
+                );
+              }
             }
           } else if (this._noResultCount > 0) {
             setStatus('restarting', 'No speech detected — check microphone');
@@ -2835,6 +2919,15 @@ const SpeechEngine = {
   },
 
   _startRec() {
+    // Set a baseline start time and clear the onstart flag before calling
+    // start() so that onend can compute an accurate session duration and detect
+    // whether onstart ever fired — even if the browser terminates the session
+    // before the audio pipeline is established (Chrome AudioContext conflict).
+    // _sessionHadOnStart is set to false here (not only in onstart) so that if
+    // the browser fires onend without ever firing onstart, the flag correctly
+    // reflects that the current session never began audio capture.
+    this._lastStartedAt = Date.now();
+    this._sessionHadOnStart = false;
     try {
       this._rec.start();
     } catch (err) {
@@ -2851,23 +2944,24 @@ const SpeechEngine = {
     if (this._networkRetryCount > 0 || this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
       this.init();
     }
-    // On mobile Chrome, briefly suspend the AudioContext before starting
+    // On Chrome, briefly suspend the AudioContext before starting
     // SpeechRecognition so SR can establish its audio capture path first.
-    // Some Android devices route mic audio exclusively to whichever API
-    // initialises first; suspending the AudioContext temporarily hands that
-    // priority to SR.  The AudioContext is resumed inside rec.onstart once SR
-    // is listening and its pipeline is active.  A short delay after the
-    // suspend gives the Android audio hardware time to settle before SR begins.
-    if (isMobileBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
-      console.log('[EchoLocate] Mobile: suspending AudioContext to give SpeechRecognition mic priority');
+    // Some Chrome versions (including Chrome ≤ 149 on macOS/Windows and some
+    // Android builds) route mic audio exclusively to whichever API initialises
+    // first; suspending the AudioContext temporarily hands that priority to SR.
+    // The AudioContext is resumed inside rec.onstart once SR is listening and
+    // its pipeline is active.  A short delay after the suspend gives the audio
+    // hardware time to settle before SR begins.
+    if (isChromeBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
+      console.log(`[EchoLocate] ${isMobileBrowser() ? 'Mobile Chrome' : 'Chrome'}: suspending AudioContext to give SpeechRecognition mic priority`);
       State.audioCtx.suspend()
         .catch(() => {})
         .then(() => new Promise(resolve => setTimeout(resolve, 200)))
         .then(() => this._startRec());
       return;
     }
-    if (isMobileBrowser()) {
-      console.log(`[EchoLocate] Mobile: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
+    if (isChromeBrowser()) {
+      console.log(`[EchoLocate] Chrome: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
     }
     this._startRec();
   },
@@ -2912,6 +3006,7 @@ const SpeechEngine = {
     this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
     this._noResultCount = 0;
     this._sessionHadResult = false;
+    this._sessionHadOnStart = false;
     this._sessionHadNetworkError = false;
     this._mobileHelpShown = false;
     if (this._offlineHandler) {
