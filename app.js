@@ -756,8 +756,8 @@ const EDGE_SETUP_HTML = `
     <li>Return here and press <strong>Start</strong></li>
   </ol>
   <p>If that option is missing, a browser or organization policy may be
-  blocking it — contact your IT administrator, or switch to
-  <strong>Google Chrome</strong>.</p>
+  blocking it — contact your IT administrator, or try
+  <strong>Safari</strong> (macOS) or <strong>Firefox 126+</strong> instead.</p>
   <p>Speech recognition is also blocked in <strong>InPrivate</strong>
   windows — open a regular Edge window instead.</p>
 `;
@@ -769,8 +769,10 @@ const SPEECH_BLOCKED_HTML = `
     <li><strong>Browsers with restricted settings</strong> — check that microphone
         access is permitted for this site</li>
   </ol>
-  <p>For the best experience, use <strong>Google Chrome</strong> in a
-  regular (non-incognito) window.</p>
+  <p>For the best experience use <strong>Safari</strong> (macOS),
+  <strong>Firefox 126+</strong>, or <strong>Microsoft Edge</strong> (with
+  <em>Use online speech recognition</em> enabled in
+  <code>edge://settings/privacy</code>).</p>
 `;
 
 const MOBILE_SPEECH_WARNING_HTML = `
@@ -856,21 +858,25 @@ const DESKTOP_CHROME_CONFLICT_HTML = `
 `;
 
 const CHROME_149_SR_FAILURE_HTML = `
-  <p>Chrome 149 (and earlier) has a confirmed browser bug in its speech
-  recognition pipeline: the SR session terminates in under 20 ms without
-  producing any audio or error.  This is not an EchoLocate problem —
-  the bug is inside Chrome itself.</p>
-  <p><strong>Things to try right now:</strong></p>
+  <p>Chrome 149 (and earlier on some macOS versions) has a confirmed browser
+  bug in its speech recognition pipeline: the SR session terminates in under
+  20 ms without producing any audio or error.  This is not an EchoLocate
+  problem — the bug is inside Chrome itself and cannot be worked around from
+  the page.  If Chrome 149 is the latest version available for your macOS,
+  please use one of the alternatives below.</p>
+  <p><strong>Alternatives that work right now:</strong></p>
   <ol>
-    <li><strong>If you are in Incognito mode</strong>, try in a regular
-        (non-Incognito) Chrome window first — Chrome restricts its speech
-        API in Incognito and the regular window is most likely to work.</li>
-    <li><strong>Update Chrome</strong> — this bug is not present in Chrome
-        150+.  Go to <code>chrome://settings/help</code> to update.</li>
-    <li><strong>Try a different browser</strong> — Edge, Firefox 126+, or
-        Safari all work with EchoLocate without this issue.</li>
-    <li>Reload the page and try once more — very occasionally a fresh load
-        helps Chrome 149 start cleanly.</li>
+    <li><strong>Safari (macOS)</strong> — works out of the box, no setup
+        needed.  Recommended if you are on a Mac.</li>
+    <li><strong>Firefox 126+</strong> — open a regular (non-Private)
+        window; microphone permission will be requested on first use.</li>
+    <li><strong>Microsoft Edge</strong> — first enable
+        <em>Use online speech recognition</em> in
+        <code>edge://settings/privacy</code> (Services section), then
+        return here and press Start.</li>
+    <li><strong>Update Chrome</strong> — if a newer Chrome is available
+        for your macOS, update via <code>chrome://settings/help</code>.
+        The bug is not present in Chrome 150+.</li>
   </ol>
 `;
 
