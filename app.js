@@ -615,6 +615,12 @@ function isMobileBrowser() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+function isWindowsBrowser() {
+  // Detect Windows — used to gate Edge help modals that describe the
+  // Windows-only "Use online speech recognition" toggle.
+  return /Win/.test(navigator.userAgent);
+}
+
 function getChromeVersion() {
   const match = navigator.userAgent.match(/Chrome\/(\d+)/);
   return match ? parseInt(match[1], 10) : 0;
@@ -678,12 +684,24 @@ function checkBrowserSupport() {
     // Web Speech API is present.  For Edge users who have not yet seen the
     // setup guide, show a proactive info modal so they know what to configure
     // before pressing Start.
-    if (isEdgeBrowser() && !localStorage.getItem(EDGE_MODAL_DISMISSED_KEY)) {
+    if (isEdgeBrowser() && isWindowsBrowser() && !localStorage.getItem(EDGE_MODAL_DISMISSED_KEY)) {
       // Defer to next microtask so the rest of boot() finishes first.
+      // Only shown on Windows — the "Use online speech recognition" toggle
+      // is a Windows-only Edge setting; macOS Edge does not have it.
       Promise.resolve().then(() => {
         showSpeechHelpModal(
           '⚠ Edge: enable online speech recognition',
           EDGE_SETUP_HTML,
+          'info',
+        );
+      });
+    } else if (isEdgeBrowser() && !isWindowsBrowser() && !localStorage.getItem(EDGE_MODAL_DISMISSED_KEY)) {
+      // macOS/Linux Edge: no special toggle needed — just grant mic permission.
+      // Show a lighter info modal so the user knows what to do on first visit.
+      Promise.resolve().then(() => {
+        showSpeechHelpModal(
+          '⚤ Edge on macOS: microphone permission needed',
+          EDGE_MACOS_HTML,
           'info',
         );
       });
@@ -748,7 +766,7 @@ function checkBrowserSupport() {
 // ── Speech Help Modal ─────────────────────────────────────────────────────────
 
 const EDGE_SETUP_HTML = `
-  <p>You are using <strong>Microsoft Edge</strong>, which requires
+  <p>You are using <strong>Microsoft Edge on Windows</strong>, which requires
   <strong>Use online speech recognition</strong> to be enabled before
   EchoLocate can transcribe speech.</p>
   <p><strong>To enable it in Edge:</strong></p>
@@ -764,6 +782,23 @@ const EDGE_SETUP_HTML = `
   <strong>Safari</strong> (macOS / iOS) instead.</p>
   <p>Speech recognition is also blocked in <strong>InPrivate</strong>
   windows — open a regular Edge window instead.</p>
+`;
+
+const EDGE_MACOS_HTML = `
+  <p>You are using <strong>Microsoft Edge on macOS</strong>. The
+  “Use online speech recognition” setting only exists in Edge on Windows
+  — you do <em>not</em> need it here.</p>
+  <p>Speech recognition should work in Edge on macOS without any extra
+  settings.  If it is blocked, try these steps:</p>
+  <ol>
+    <li>Make sure you are in a regular (non-InPrivate) Edge window</li>
+    <li>Click <strong>Start</strong> and grant microphone permission
+        when Edge prompts you</li>
+    <li>If no prompt appears, check site microphone access at<br>
+        <code>edge://settings/content/microphone</code></li>
+    <li>If it still fails, try <strong>Safari</strong> instead — it works
+        on macOS without any setup</li>
+  </ol>
 `;
 
 const SPEECH_BLOCKED_HTML = `
@@ -2789,10 +2824,11 @@ const SpeechEngine = {
           let msg;
           if (navigator.onLine) {
             if (isEdgeBrowser()) {
-              showSpeechHelpModal(
-                '⚠ Edge speech recognition blocked',
-                EDGE_SETUP_HTML,
-              );
+              const edgeHtml = isWindowsBrowser() ? EDGE_SETUP_HTML : EDGE_MACOS_HTML;
+              const edgeTitle = isWindowsBrowser()
+                ? '⚠ Edge speech recognition blocked'
+                : '⚠ Edge on macOS: speech recognition blocked';
+              showSpeechHelpModal(edgeTitle, edgeHtml);
               msg = 'Edge speech recognition blocked — see the help dialog';
             } else if (isMobileBrowser() && isChromeBrowser()) {
               showSpeechHelpModal(
