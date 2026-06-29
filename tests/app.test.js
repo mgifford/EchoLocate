@@ -66,7 +66,7 @@ function makeMockElement() {
 
 const appCode = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf-8');
 
-function loadApp() {
+function loadApp(userAgent = 'Mozilla/5.0 (Test)') {
   const mockDoc = {
     // Setting readyState to 'loading' prevents boot() from being called
     // synchronously, keeping the module load side-effect-free.
@@ -109,7 +109,7 @@ function loadApp() {
       location: { href: 'http://localhost/' },
     },
     navigator: {
-      userAgent: 'Mozilla/5.0 (Test)',
+      userAgent,
       clipboard: null,
       mediaDevices: null,
     },
@@ -213,6 +213,27 @@ describe('parseMaxSpeakers', () => {
 
   it('truncates floats to integer (parseInt behaviour)', () => {
     assert.equal(fn('3.9'), 3);
+  });
+});
+
+// ── shouldSuspendAudioContextForSpeech ───────────────────────────────────────
+
+describe('shouldSuspendAudioContextForSpeech', () => {
+  it('returns true for mobile Chrome', () => {
+    const mobileChrome = loadApp('Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36');
+    assert.equal(mobileChrome.shouldSuspendAudioContextForSpeech(), true);
+  });
+
+  it('returns false for desktop Chrome', () => {
+    const desktopChrome = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
+    assert.equal(desktopChrome.shouldSuspendAudioContextForSpeech(), false);
+  });
+
+  it('returns false for Edge and other browsers', () => {
+    const edge = loadApp('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0');
+    const firefox = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:126.0) Gecko/20100101 Firefox/126.0');
+    assert.equal(edge.shouldSuspendAudioContextForSpeech(), false);
+    assert.equal(firefox.shouldSuspendAudioContextForSpeech(), false);
   });
 });
 

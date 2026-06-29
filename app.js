@@ -614,6 +614,12 @@ function isMobileBrowser() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+function shouldSuspendAudioContextForSpeech() {
+  // The AudioContext suspend workaround is only needed on mobile Chrome.
+  // Desktop Chrome has been more reliable when the mic graph stays running.
+  return isChromeBrowser() && isMobileBrowser();
+}
+
 function parseBrowserName() {
   // Returns a short human-readable browser + platform label for debug reports,
   // e.g. "Chrome 147 on Android", "Edge 125 on Windows", "Firefox 115".
@@ -2393,9 +2399,9 @@ const DebugLog = {
       : 'never';
 
     // Indicate whether the AudioContext-suspend workaround is in use.
-    // Shows 'applied' when Chrome is active and the AudioContext exists,
-    // 'n/a' for non-Chrome browsers that never need the suspend.
-    const suspendWorkaround = isChromeBrowser()
+    // Shows 'applied' when mobile Chrome is active and the AudioContext exists,
+    // 'n/a' for browsers that never need the suspend.
+    const suspendWorkaround = shouldSuspendAudioContextForSpeech()
       ? (ctx ? `applied (ctx: ${ctx.state})` : 'pending (no AudioCtx yet)')
       : 'n/a (non-Chrome)';
 
@@ -2952,7 +2958,7 @@ const SpeechEngine = {
     // The AudioContext is resumed inside rec.onstart once SR is listening and
     // its pipeline is active.  A short delay after the suspend gives the audio
     // hardware time to settle before SR begins.
-    if (isChromeBrowser() && State.audioCtx && State.audioCtx.state === 'running') {
+    if (shouldSuspendAudioContextForSpeech() && State.audioCtx && State.audioCtx.state === 'running') {
       console.log(`[EchoLocate] ${isMobileBrowser() ? 'Mobile Chrome' : 'Chrome'}: suspending AudioContext to give SpeechRecognition mic priority`);
       State.audioCtx.suspend()
         .catch(() => {})
@@ -2960,7 +2966,7 @@ const SpeechEngine = {
         .then(() => this._startRec());
       return;
     }
-    if (isChromeBrowser()) {
+    if (shouldSuspendAudioContextForSpeech()) {
       console.log(`[EchoLocate] Chrome: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
     }
     this._startRec();
