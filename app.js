@@ -2654,7 +2654,13 @@ const SpeechEngine = {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
 
-    rec.continuous = true;
+    // Chrome ≤149 has a silent bug in its continuous-mode audio pipeline that
+    // causes rec.start() to fire onend in 0–19 ms without ever firing onerror.
+    // Using continuous: false routes through a different code path in Chrome
+    // that does not have this regression. The existing onend restart loop
+    // already handles re-firing SR after each utterance, so the user
+    // experience is nearly identical.
+    rec.continuous = !State.captionsOnly;
     rec.interimResults = true;
     rec.lang = State.recognitionLang || DEFAULT_RECOGNITION_LANG;
     rec.maxAlternatives = 1;
@@ -3036,13 +3042,17 @@ const SpeechEngine = {
     setStatus('active', 'Starting…');
     updateEmptyStage();
 
-    // Option A — captions-first ordering. On Chrome builds that hand the mic
-    // exclusively to whichever API grabs it first, starting the getUserMedia /
-    // Meyda graph would block SpeechRecognition. There we skip the graph so the
-    // words show straight away; pitch-based speaker grouping is disabled.
+    // Captions-first ordering. On desktop Chrome ≤149 the continuous-mode
+    // SpeechRecognition pipeline has a silent bug (onend fires in 0–19 ms,
+    // onerror never fires). We skip the mic-analysis graph AND switch to
+    // single-utterance mode (continuous: false) so SR uses a different,
+    // working code path. The onend restart loop already handles re-fires.
     State.captionsOnly = !usesMicAnalysisGraph();
     if (State.captionsOnly) {
-      console.log(`[EchoLocate] Chrome ${getChromeVersion() || '(unknown)'}: captions-only mode — skipping mic-analysis graph so SpeechRecognition gets exclusive microphone access`);
+      // Reinitialise the SR object NOW so this first attempt also picks up
+      // continuous: false (the startup init ran before captionsOnly was set).
+      this.init();
+      console.log(`[EchoLocate] Chrome ${getChromeVersion() || '(unknown)'}: captions-only mode — single-utterance SR (continuous: false) to avoid Chrome ≤149 pipeline bug`);
     } else {
       try {
         await setupAudio();
