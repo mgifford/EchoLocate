@@ -727,15 +727,19 @@ function checkBrowserSupport() {
   Promise.resolve().then(() => {
     const browserName = isEdgeBrowser() ? 'Microsoft Edge' : 'this browser';
     showSpeechHelpModal(
-      '⚠ Speech recognition not available',
+      '\u26a0 Speech recognition not available',
       `<p><strong>${escapeHTML(browserName)}</strong> does not support the
       Web Speech API required for live transcription.</p>
-      <p>For best results, use <strong>Google Chrome</strong> in a regular
-      (non-incognito) window.</p>
-      <p>Microsoft Edge also supports it, but requires
-      <strong>Use online speech recognition</strong> to be enabled in
-      <strong>Edge Settings → Privacy, search, and services → Services</strong>
-      (<code>edge://settings/privacy</code>).</p>`,
+      <p><strong>Browsers that work with EchoLocate:</strong></p>
+      <ul>
+        <li><strong>Safari</strong> (macOS / iOS) \u2014 works out of the box</li>
+        <li><strong>Microsoft Edge</strong> \u2014 enable <em>Use online speech
+            recognition</em> in <code>edge://settings/privacy</code>
+            (Services section), then reload this page</li>
+        <li><strong>Google Chrome 150+</strong> \u2014 regular (non-incognito)
+            window; Chrome 149 and earlier have a known bug that prevents
+            speech recognition from starting on some macOS versions</li>
+      </ul>`,
     );
   });
   return false;
@@ -757,7 +761,7 @@ const EDGE_SETUP_HTML = `
   </ol>
   <p>If that option is missing, a browser or organization policy may be
   blocking it — contact your IT administrator, or try
-  <strong>Safari</strong> (macOS) or <strong>Firefox 126+</strong> instead.</p>
+  <strong>Safari</strong> (macOS / iOS) instead.</p>
   <p>Speech recognition is also blocked in <strong>InPrivate</strong>
   windows — open a regular Edge window instead.</p>
 `;
@@ -769,8 +773,8 @@ const SPEECH_BLOCKED_HTML = `
     <li><strong>Browsers with restricted settings</strong> — check that microphone
         access is permitted for this site</li>
   </ol>
-  <p>For the best experience use <strong>Safari</strong> (macOS),
-  <strong>Firefox 126+</strong>, or <strong>Microsoft Edge</strong> (with
+  <p>For the best experience use <strong>Safari</strong> (macOS / iOS),
+  <strong>Google Chrome 150+</strong>, or <strong>Microsoft Edge</strong> (with
   <em>Use online speech recognition</em> enabled in
   <code>edge://settings/privacy</code>).</p>
 `;
@@ -868,8 +872,6 @@ const CHROME_149_SR_FAILURE_HTML = `
   <ol>
     <li><strong>Safari (macOS)</strong> — works out of the box, no setup
         needed.  Recommended if you are on a Mac.</li>
-    <li><strong>Firefox 126+</strong> — open a regular (non-Private)
-        window; microphone permission will be requested on first use.</li>
     <li><strong>Microsoft Edge</strong> — first enable
         <em>Use online speech recognition</em> in
         <code>edge://settings/privacy</code> (Services section), then

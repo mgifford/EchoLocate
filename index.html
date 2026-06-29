@@ -249,11 +249,16 @@
               Your browser does not support the Web Speech API required for live transcription.
             </p>
             <p>
-              For best results, use <strong>Google Chrome</strong>.
-              Microsoft Edge also supports it, but may require
-              <strong>Use online speech recognition</strong> to be enabled in
-              <strong>Edge Settings → Privacy, search, and services → Services</strong>.
+              Browsers that work with EchoLocate:
             </p>
+            <ul>
+              <li><strong>Safari</strong> (macOS / iOS) — works out of the box</li>
+              <li><strong>Microsoft Edge</strong> — enable <strong>Use online speech recognition</strong>
+                  in <strong>Edge Settings → Privacy, search, and services → Services</strong>
+                  (<code>edge://settings/privacy</code>), then reload this page</li>
+              <li><strong>Google Chrome 150+</strong> — works in a regular (non-incognito) window;
+                  Chrome 149 and earlier have a known bug that prevents speech recognition from starting</li>
+            </ul>
           </div>
         </section>
 
@@ -323,6 +328,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20260629-9"></script>
+  <script src="app.js?v=20260629-10"></script>
 </body>
 </html>
