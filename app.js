@@ -299,6 +299,7 @@ const State = {
   systemAudioSamples:        [], // RMS energy samples during current utterance
   micEnergySamples:          [], // mic RMS samples for source comparison
   speechSupported:           true, // set to false by checkBrowserSupport() when API is absent
+  captionsOnly:              false, // true when the mic-analysis graph is skipped so SR gets exclusive mic access
   maxSpeakers:               parseMaxSpeakers(localStorage.getItem('echolocate-max-speakers')),
   // Translation
   translationEnabled:        localStorage.getItem('echolocate-translation-enabled') === '1',
@@ -620,13 +621,28 @@ function getChromeVersion() {
 }
 
 function shouldSuspendAudioContextForSpeech() {
-  // Chrome 149 and earlier can route mic audio to whichever API starts first.
-  // On mobile Chrome we still keep the workaround on regardless of version,
-  // but newer desktop Chrome builds (Canary/151+) are reliable without it.
-  if (!isChromeBrowser()) return false;
-  if (isMobileBrowser()) return true;
-  const version = getChromeVersion();
-  return version > 0 && version <= 149;
+  // Mobile Chrome can route mic audio to whichever API starts first, so we
+  // briefly suspend the AudioContext to give SpeechRecognition priority.
+  // Desktop builds with the same conflict (Chrome ≤149) instead run in
+  // captions-only mode (see usesMicAnalysisGraph) and never create an
+  // AudioContext before SR, so the suspend dance is unnecessary there.
+  return isChromeBrowser() && isMobileBrowser();
+}
+
+function usesMicAnalysisGraph() {
+  // Desktop Chrome 149 and earlier hands the microphone exclusively to
+  // whichever API grabs it first. EchoLocate's pitch/Meyda graph calls
+  // getUserMedia, which would block SpeechRecognition from ever starting on
+  // those builds. To guarantee live captions, those versions run in
+  // captions-only mode: SpeechRecognition gets exclusive mic access and the
+  // pitch-based speaker grouping is disabled. Every other browser (mobile
+  // Chrome, desktop Chrome 150+/Canary, Edge, Firefox, Safari) keeps the
+  // full mic-analysis graph.
+  if (isChromeBrowser() && !isMobileBrowser()) {
+    const version = getChromeVersion();
+    if (version > 0 && version <= 149) return false;
+  }
+  return true;
 }
 
 function parseBrowserName() {
@@ -1908,6 +1924,15 @@ function resolveSpeakerProfile(metrics) {
     return { profile: first, matchRatio: 1, confidenceLevel: first.matchLevel, createdNew: true };
   }
 
+  // Captions-only mode has no voice signature to compare, so keep every caption
+  // in the single existing lane instead of spawning phantom speaker profiles.
+  if (State.captionsOnly) {
+    const only = State.profiles[0];
+    only.avgPitch = only.avgPitch * 0.7 + pitch * 0.3;
+    only.tone = tone;
+    return { profile: only, matchRatio: 1, confidenceLevel: 'medium', createdNew: false };
+  }
+
   const scored = [];
   for (const p of State.profiles) {
     const similarity = (signature && p.signature)
@@ -2415,6 +2440,12 @@ const DebugLog = {
       ? (ctx ? `applied (ctx: ${ctx.state})` : 'pending (no AudioCtx yet)')
       : 'n/a (non-Chrome)';
 
+    // Indicate captions-only mode, where the mic-analysis graph is skipped so
+    // SpeechRecognition gets exclusive mic access (desktop Chrome \u2264149).
+    const captionsOnlyStr = State.captionsOnly
+      ? 'ON (pitch grouping disabled for reliable captions)'
+      : (usesMicAnalysisGraph() ? 'off (full mic-analysis graph)' : 'pending');
+
     // Show current backoff state so a report immediately reveals whether
     // the engine is in a retry loop and how far into the backoff it is.
     const se = SpeechEngine;
@@ -2434,6 +2465,7 @@ const DebugLog = {
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
       `MicEnergy: ${micEnergyStr} | LastResult: ${lastResultAgo}`,
       `SuspendWorkaround: ${suspendWorkaround}`,
+      `CaptionsOnly: ${captionsOnlyStr}`,
       `SRRetries: ${retryStr}`,
       `Viewport: ${window.innerWidth}\u00d7${window.innerHeight} | Screen: ${window.screen.width}\u00d7${window.screen.height}`,
       `Config: maxSpeakers: ${State.maxSpeakers} | matchThreshold: ${CFG.SIGNATURE_MATCH_SIMILARITY} | hysteresisMargin: ${CFG.HYSTERESIS_MARGIN} | hysteresisLock: ${CFG.HYSTERESIS_LOCK_MS}ms`,
@@ -3004,13 +3036,23 @@ const SpeechEngine = {
     setStatus('active', 'Starting…');
     updateEmptyStage();
 
-    try {
-      await setupAudio();
-    } catch {
-      setStatus('error', 'Mic access denied');
-      State.isRunning = false;
-      updateEmptyStage();
-      return;
+    // Option A — captions-first ordering. On Chrome builds that hand the mic
+    // exclusively to whichever API grabs it first, starting the getUserMedia /
+    // Meyda graph would block SpeechRecognition. There we skip the graph so the
+    // words show straight away; pitch-based speaker grouping is disabled.
+    State.captionsOnly = !usesMicAnalysisGraph();
+    if (State.captionsOnly) {
+      console.log(`[EchoLocate] Chrome ${getChromeVersion() || '(unknown)'}: captions-only mode — skipping mic-analysis graph so SpeechRecognition gets exclusive microphone access`);
+    } else {
+      try {
+        await setupAudio();
+      } catch {
+        setStatus('error', 'Mic access denied');
+        State.isRunning = false;
+        State.captionsOnly = false;
+        updateEmptyStage();
+        return;
+      }
     }
 
     this._rawStart();

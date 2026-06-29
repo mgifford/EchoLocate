@@ -224,9 +224,9 @@ describe('shouldSuspendAudioContextForSpeech', () => {
     assert.equal(mobileChrome.shouldSuspendAudioContextForSpeech(), true);
   });
 
-  it('returns true for desktop Chrome 149 and earlier', () => {
+  it('returns false for desktop Chrome (handled by captions-only mode instead)', () => {
     const chrome149 = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36');
-    assert.equal(chrome149.shouldSuspendAudioContextForSpeech(), true);
+    assert.equal(chrome149.shouldSuspendAudioContextForSpeech(), false);
   });
 
   it('returns false for desktop Chrome 151 and Edge/Firefox', () => {
@@ -236,6 +236,28 @@ describe('shouldSuspendAudioContextForSpeech', () => {
     assert.equal(chrome151.shouldSuspendAudioContextForSpeech(), false);
     assert.equal(edge.shouldSuspendAudioContextForSpeech(), false);
     assert.equal(firefox.shouldSuspendAudioContextForSpeech(), false);
+  });
+});
+
+// ── usesMicAnalysisGraph ─────────────────────────────────────────────────────
+
+describe('usesMicAnalysisGraph', () => {
+  it('returns false for desktop Chrome 149 and earlier (captions-only mode)', () => {
+    const chrome149 = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36');
+    const chrome120 = loadApp('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    assert.equal(chrome149.usesMicAnalysisGraph(), false);
+    assert.equal(chrome120.usesMicAnalysisGraph(), false);
+  });
+
+  it('returns true for desktop Chrome 150+/Canary, Edge, Firefox and mobile Chrome', () => {
+    const chrome151 = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36');
+    const edge = loadApp('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0');
+    const firefox = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:126.0) Gecko/20100101 Firefox/126.0');
+    const mobileChrome = loadApp('Mozilla/5.0 (Linux; Android 14; Pixel) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36');
+    assert.equal(chrome151.usesMicAnalysisGraph(), true);
+    assert.equal(edge.usesMicAnalysisGraph(), true);
+    assert.equal(firefox.usesMicAnalysisGraph(), true);
+    assert.equal(mobileChrome.usesMicAnalysisGraph(), true);
   });
 });
 
