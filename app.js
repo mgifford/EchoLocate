@@ -614,10 +614,19 @@ function isMobileBrowser() {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
+function getChromeVersion() {
+  const match = navigator.userAgent.match(/Chrome\/(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 function shouldSuspendAudioContextForSpeech() {
-  // The AudioContext suspend workaround is only needed on mobile Chrome.
-  // Desktop Chrome has been more reliable when the mic graph stays running.
-  return isChromeBrowser() && isMobileBrowser();
+  // Chrome 149 and earlier can route mic audio to whichever API starts first.
+  // On mobile Chrome we still keep the workaround on regardless of version,
+  // but newer desktop Chrome builds (Canary/151+) are reliable without it.
+  if (!isChromeBrowser()) return false;
+  if (isMobileBrowser()) return true;
+  const version = getChromeVersion();
+  return version > 0 && version <= 149;
 }
 
 function parseBrowserName() {
@@ -2399,7 +2408,8 @@ const DebugLog = {
       : 'never';
 
     // Indicate whether the AudioContext-suspend workaround is in use.
-    // Shows 'applied' when mobile Chrome is active and the AudioContext exists,
+    // Shows 'applied' when Chrome needs the suspend workaround and the
+    // AudioContext exists,
     // 'n/a' for browsers that never need the suspend.
     const suspendWorkaround = shouldSuspendAudioContextForSpeech()
       ? (ctx ? `applied (ctx: ${ctx.state})` : 'pending (no AudioCtx yet)')
@@ -2418,6 +2428,7 @@ const DebugLog = {
     return [
       `UA: ${navigator.userAgent}`,
       `Browser: ${parseBrowserName()} | isChrome: ${isChromeBrowser()} | isEdge: ${isEdgeBrowser()} | isMobile: ${isMobileBrowser()}`,
+      `ChromeVersion: ${getChromeVersion() || 'n/a'}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
@@ -2959,7 +2970,7 @@ const SpeechEngine = {
     // its pipeline is active.  A short delay after the suspend gives the audio
     // hardware time to settle before SR begins.
     if (shouldSuspendAudioContextForSpeech() && State.audioCtx && State.audioCtx.state === 'running') {
-      console.log(`[EchoLocate] ${isMobileBrowser() ? 'Mobile Chrome' : 'Chrome'}: suspending AudioContext to give SpeechRecognition mic priority`);
+      console.log(`[EchoLocate] Chrome ${getChromeVersion() || '(unknown)'}: suspending AudioContext to give SpeechRecognition mic priority`);
       State.audioCtx.suspend()
         .catch(() => {})
         .then(() => new Promise(resolve => setTimeout(resolve, 200)))
@@ -2967,7 +2978,7 @@ const SpeechEngine = {
       return;
     }
     if (shouldSuspendAudioContextForSpeech()) {
-      console.log(`[EchoLocate] Chrome: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
+      console.log(`[EchoLocate] Chrome ${getChromeVersion() || '(unknown)'}: AudioContext state is ${State.audioCtx?.state ?? 'none'} — starting SR without suspend`);
     }
     this._startRec();
   },

@@ -224,14 +224,16 @@ describe('shouldSuspendAudioContextForSpeech', () => {
     assert.equal(mobileChrome.shouldSuspendAudioContextForSpeech(), true);
   });
 
-  it('returns false for desktop Chrome', () => {
-    const desktopChrome = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36');
-    assert.equal(desktopChrome.shouldSuspendAudioContextForSpeech(), false);
+  it('returns true for desktop Chrome 149 and earlier', () => {
+    const chrome149 = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36');
+    assert.equal(chrome149.shouldSuspendAudioContextForSpeech(), true);
   });
 
-  it('returns false for Edge and other browsers', () => {
+  it('returns false for desktop Chrome 151 and Edge/Firefox', () => {
+    const chrome151 = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36');
     const edge = loadApp('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0');
     const firefox = loadApp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:126.0) Gecko/20100101 Firefox/126.0');
+    assert.equal(chrome151.shouldSuspendAudioContextForSpeech(), false);
     assert.equal(edge.shouldSuspendAudioContextForSpeech(), false);
     assert.equal(firefox.shouldSuspendAudioContextForSpeech(), false);
   });
@@ -1086,6 +1088,39 @@ describe('isChromeBrowser', () => {
 
   it('returns false for the generic test UA', () => {
     assert.equal(fn(), false);
+  });
+});
+
+// ── getChromeVersion ─────────────────────────────────────────────────────────
+
+describe('getChromeVersion', () => {
+  const fn = ctx.getChromeVersion;
+  const savedUA = ctx.navigator.userAgent;
+
+  const withUA = (ua, cb) => {
+    ctx.navigator.userAgent = ua;
+    try { return cb(); } finally { ctx.navigator.userAgent = savedUA; }
+  };
+
+  it('returns the Chrome major version from desktop UA strings', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+      fn,
+    ), 149);
+  });
+
+  it('returns the Chrome major version for Canary UA strings', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36',
+      fn,
+    ), 151);
+  });
+
+  it('returns 0 when Chrome is absent', () => {
+    assert.equal(withUA(
+      'Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
+      fn,
+    ), 0);
   });
 });
 
