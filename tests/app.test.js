@@ -1124,6 +1124,30 @@ describe('getChromeVersion', () => {
   });
 });
 
+// ── SpeechEngine quick restart ───────────────────────────────────────────────
+
+describe('SpeechEngine quick restart', () => {
+  it('recreates the recognizer after a quick-fail retry', () => {
+    const initCallsBefore = vm.runInContext(`(() => {
+      let initCalls = 0;
+      const originalInit = SpeechEngine.init;
+      SpeechEngine.init = function () {
+        initCalls++;
+        this._rec = { start: () => {} };
+      };
+      SpeechEngine._rec = { start: () => {} };
+      SpeechEngine._networkRetryCount = 0;
+      SpeechEngine._quickRestartCount = 1;
+      SpeechEngine._noResultCount = 0;
+      SpeechEngine._rawStart();
+      SpeechEngine.init = originalInit;
+      return initCalls;
+    })()`, ctx);
+
+    assert.equal(initCallsBefore, 1);
+  });
+});
+
 // ── parseBrowserName ──────────────────────────────────────────────────────────
 
 describe('parseBrowserName', () => {

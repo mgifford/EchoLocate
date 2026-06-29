@@ -2954,11 +2954,12 @@ const SpeechEngine = {
 
   _rawStart() {
     // Re-create the SpeechRecognition object before each retry after a network
-    // error or after persistent no-result failures.  Edge (and some other
-    // Chromium builds) can enter a broken state after a failed network
-    // connection; a fresh instance recovers it.  On Android Chrome, re-init
-    // also resets the internal audio capture pipeline which can get stuck.
-    if (this._networkRetryCount > 0 || this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
+    // error, a quick fail, or after persistent no-result failures.  Edge (and
+    // some other Chromium builds) can enter a broken state after a failed
+    // network connection; a fresh instance recovers it.  On Chrome 149, quick
+    // fail sessions can also leave the recognizer in a bad state, so rebuild it
+    // before retrying instead of reusing the same instance.
+    if (this._networkRetryCount > 0 || this._quickRestartCount > 0 || this._noResultCount >= CFG.NO_RESULT_BACKOFF_COUNT) {
       this.init();
     }
     // On Chrome, briefly suspend the AudioContext before starting
