@@ -855,6 +855,25 @@ const DESKTOP_CHROME_CONFLICT_HTML = `
   </ol>
 `;
 
+const CHROME_149_SR_FAILURE_HTML = `
+  <p>Chrome 149 (and earlier) has a confirmed browser bug in its speech
+  recognition pipeline: the SR session terminates in under 20 ms without
+  producing any audio or error.  This is not an EchoLocate problem —
+  the bug is inside Chrome itself.</p>
+  <p><strong>Things to try right now:</strong></p>
+  <ol>
+    <li><strong>If you are in Incognito mode</strong>, try in a regular
+        (non-Incognito) Chrome window first — Chrome restricts its speech
+        API in Incognito and the regular window is most likely to work.</li>
+    <li><strong>Update Chrome</strong> — this bug is not present in Chrome
+        150+.  Go to <code>chrome://settings/help</code> to update.</li>
+    <li><strong>Try a different browser</strong> — Edge, Firefox 126+, or
+        Safari all work with EchoLocate without this issue.</li>
+    <li>Reload the page and try once more — very occasionally a fresh load
+        helps Chrome 149 start cleanly.</li>
+  </ol>
+`;
+
 const EDGE_MODAL_DISMISSED_KEY   = 'echolocate-edge-modal-dismissed';
 const MOBILE_MODAL_DISMISSED_KEY = 'echolocate-mobile-modal-dismissed';
 
@@ -2839,6 +2858,18 @@ const SpeechEngine = {
             console.warn(
               `[EchoLocate] Recognition ended after ${sessionMs}ms — quick-restart backoff ${this._quickRestartCount} (next retry in ${delay}ms)`,
             );
+            // On Chrome ≤149 captions-only mode the SR pipeline terminates
+            // silently in under 20 ms (browser bug, not an EchoLocate issue).
+            // After a few quick failures surface a targeted help modal so the
+            // user isn't left watching a 30-second spinner.
+            if (State.captionsOnly && this._quickRestartCount === 3 && !this._mobileHelpShown) {
+              this._mobileHelpShown = true;
+              showSpeechHelpModal(
+                `⚠ Chrome ${getChromeVersion() || '149'}: speech recognition bug`,
+                CHROME_149_SR_FAILURE_HTML,
+                'info',
+              );
+            }
           } else {
             this._quickRestartCount = 0;
             this._quickRestartDelay = CFG.NETWORK_BACKOFF_INIT_MS;
