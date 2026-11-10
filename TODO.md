@@ -40,6 +40,9 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
+- **Translation model consent** (this PR): per-pair consent before Chrome
+  downloads a translation model, with a disclosure dialog and no captions
+  blocked when consent is refused.
 - **Content Security Policy** (PR #63): meta CSP with a hashed import map,
   external theme bootstrap, no eval/inline scripts, local-only connect-src,
   plus regression tests. See <https://github.com/mgifford/EchoLocate/pull/63>.
@@ -154,8 +157,9 @@ history, and no reference points at a file that does not exist.
 
 - [ ] Add the whisper-base manifest entry with the WebGPU engine (PR 3), with
       pinned revision, exact sizes and SHA-256.
-- [ ] Put the existing Chrome Translator download into the consent inventory
-      so "no downloads until consent" covers browser-managed models too.
+- [x] Put the existing Chrome Translator download into the consent inventory:
+      per source:target consent, dialog before `Translator.create`, and refusal
+      that leaves captions working.
 - [ ] Test cache eviction and reinstall on a real device.
 
 ## Later (parked — do not start yet)

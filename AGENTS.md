@@ -22,6 +22,7 @@ Primary runtime pieces:
 - Capability probing (Web Speech, on-device status, WebGPU adapter, WASM, storage) is local-only and shown in Debug
 - Model installs require exact-revision consent and SHA-256 verification; `models/manifest.json` is empty until an engine ships
 - A meta CSP allows scripts only from self plus the hashed import map; no eval or arbitrary inline scripts. Add model hosts to `connect-src` before download support ships
+- Translation asks for per-language-pair consent before Chrome downloads its model; refusing leaves captions and the rest of the app working
 - Light/dark theme toggle is persisted in localStorage
 
 ## Working Agreements For Agents And Contributors

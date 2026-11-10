@@ -25,12 +25,13 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 - **#61** — SpeechAdapter contract and capability snapshot.
 - **#62** — model manifest, consent manager and consent UI.
 - **CSP** — meta policy, external theme bootstrap, hashed import map and tests.
+- **Translation consent** — per-pair consent before Chrome's model download.
 
 ## Current constraints that affect the plan
 
 - `app.js` is a classic script tested by executing it in a Node `vm` context.
   ES-module adapters need an explicit loading/test strategy before PR 1 lands.
-- There is no CI workflow; checks are `node --check` and `npm test` (348 tests
+- There is no CI workflow; checks are `node --check` and `npm test` (357 tests
   at this snapshot).
 - GitHub Pages cannot set COOP/COEP headers, so `SharedArrayBuffer` and
   multi-threaded WASM are unavailable. Plan single-thread ORT.
@@ -41,7 +42,6 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 
 ## Next actionable items
 
-1. Add the first whisper-base manifest entry with the WebGPU engine (PR 3),
-   and include the Chrome Translator download in the consent inventory.
+1. Add the first whisper-base manifest entry with the WebGPU engine (PR 3).
 2. Replace the Chrome ≤149 UA gate when a device test matrix is available.
 3. Then measure WER/latency/memory and run the no-upload network audit.

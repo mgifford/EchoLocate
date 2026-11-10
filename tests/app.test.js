@@ -1432,6 +1432,21 @@ describe('resolveSpeakerProfile attribution', () => {
 
 // ── Speech engine selection ───────────────────────────────────────────────────
 
+describe('languageMeta', () => {
+  const fn = ctx.languageMeta;
+
+  it('does not match the empty Auto option for a base language code', () => {
+    const meta = fn('en');
+    assert.ok(meta, 'expected a match');
+    assert.notEqual(meta.code, '');
+    assert.match(meta.label, /English/i);
+  });
+
+  it('still resolves the explicit Auto option', () => {
+    assert.equal(fn('').code, '');
+  });
+});
+
 describe('normalizeSpeechEngine', () => {
   const fn = ctx.normalizeSpeechEngine;
 
@@ -1858,5 +1873,94 @@ describe('capability detection', () => {
     })`, c);
     assert.equal(snapshot.secureContext, true);
     assert.equal(vm.runInContext('State.capabilities.secureContext', c), true);
+  });
+});
+
+// ── Translation model consent ─────────────────────────────────────────────────
+
+describe('translation model consent', () => {
+  function setup() {
+    const c = loadApp();
+    vm.runInContext(`
+      window.Translator = {
+        availability: async () => 'available',
+        create: async () => {
+          window.__translatorCreates = (window.__translatorCreates || 0) + 1;
+          return { translate: async (text) => 'T:' + text };
+        },
+      };
+      State.translationConsent = {};
+      State.translationCapability = 'supported';
+      Translation._cache.clear();
+      window.__translatorCreates = 0;
+    `, c);
+    return c;
+  }
+
+  it('normalises pairs and rejects same/invalid pairs', () => {
+    const fn = ctx.normalizeTranslationPair;
+    assert.deepEqual(fn('EN', 'fr'), ['en', 'fr']);
+    assert.equal(fn('en', 'en'), null);
+    assert.equal(fn('e', 'fr'), null);
+    assert.equal(fn('en', 'fr-FR'), null);
+    assert.equal(ctx.translationPairKey('en', 'fr'), 'en:fr');
+  });
+
+  it('refuses to create a translator before consent', async () => {
+    const c = setup();
+    const translator = await vm.runInContext(`Translation.ensurePair('en', 'fr')`, c);
+    assert.equal(translator, null);
+    assert.equal(vm.runInContext('window.__translatorCreates', c), 0);
+  });
+
+  it('creates and translates after pair consent, and persists it', async () => {
+    const c = setup();
+    vm.runInContext(`grantTranslationConsent('en', ['fr'])`, c);
+
+    assert.equal(vm.runInContext(`hasTranslationConsent('en', 'fr')`, c), true);
+    assert.equal(
+      c.localStorage.getItem('echolocate_translation_consent_v1'),
+      '{"en:fr":true}',
+    );
+
+    const translator = await vm.runInContext(`Translation.ensurePair('en', 'fr')`, c);
+    assert.ok(translator);
+    assert.equal(vm.runInContext('window.__translatorCreates', c), 1);
+
+    const out = await vm.runInContext(`Translation.translateToTargets('hi', 'en-US', ['fr'])`, c);
+    assert.deepEqual(out, [{ lang: 'fr', text: 'T:hi' }]);
+  });
+
+  it('skips unapproved targets without downloading', async () => {
+    const c = setup();
+    const out = await vm.runInContext(`Translation.translateToTargets('hi', 'en-US', ['de'])`, c);
+    assert.deepEqual(out, []);
+    assert.equal(vm.runInContext('window.__translatorCreates', c), 0);
+  });
+
+  it('prewarms only approved pairs', async () => {
+    const c = setup();
+    vm.runInContext(`grantTranslationConsent('en', ['fr'])`, c);
+    await vm.runInContext(`Translation.preWarmTranslators('en', ['fr', 'de'])`, c);
+    assert.equal(vm.runInContext('window.__translatorCreates', c), 1);
+  });
+
+  it('returns true without a dialog when every pair is approved', async () => {
+    const c = setup();
+    vm.runInContext(`grantTranslationConsent('en', ['fr'])`, c);
+    const allowed = await vm.runInContext(`requestTranslationConsent('en', ['fr'])`, c);
+    assert.equal(allowed, true);
+  });
+
+  it('drops malformed consent entries on load', () => {
+    const c = loadApp();
+    c.localStorage.setItem('echolocate_translation_consent_v1', JSON.stringify({
+      'en:fr': true,
+      'en:de': false,
+      'bad': true,
+      'en:it': 'yes',
+    }));
+    const consent = vm.runInContext('loadTranslationConsent()', c);
+    assert.deepEqual(consent, { 'en:fr': true });
   });
 });

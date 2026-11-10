@@ -102,8 +102,9 @@ This makes the transcript more useful in subtitle-capable tools that understand 
    browser vendor's speech servers, under that vendor's terms. EchoLocate does not control that path
 4. The experimental **On-device** engine asks Chrome to recognise speech locally; Chrome downloads and
    manages the language pack itself (see below)
-5. Optional translation uses Chrome's built-in Translator API on device; Chrome may download a small
-   translation model on first use
+5. Optional translation uses Chrome's built-in Translator API on device. EchoLocate asks for consent
+   per language pair before Chrome downloads its small translation model; refusing leaves captions
+   working
 6. The interface, transcript, export and language detection work offline; the browser speech service
    requires a network connection in Chrome and Edge, while the on-device engine is designed to work offline
 

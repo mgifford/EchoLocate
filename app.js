@@ -850,12 +850,72 @@ const State = {
   // Translation
   translationEnabled:        localStorage.getItem('echolocate-translation-enabled') === '1',
   translationTargets:        loadTranslationTargets(),
+  translationConsent:        loadTranslationConsent(),
   speakerTranslationPrefs:   loadSpeakerTranslationPrefs(),
   translationCapability:     'checking', // checking | supported | unsupported
   translatorStatus:          'idle', // idle | checking | available | downloading | unavailable | unsupported
 };
 
 const PALETTE = ['#4dabf7', '#cc5de8', '#f59f00', '#20c997', '#ff8787', '#74c0fc', '#ffd43b', '#b197fc'];
+
+// ── Translation model consent ────────────────────────────────────────────────
+// Chrome's Translator API downloads a model per language pair. We treat that
+// download like any other model: no create() until the user has approved the
+// exact pair. Approval is keyed source:target and persisted locally.
+const TRANSLATION_CONSENT_KEY = 'echolocate_translation_consent_v1';
+
+function normalizeTranslationPair(source, target) {
+  const src = String(source || '').trim().toLowerCase();
+  const tgt = String(target || '').trim().toLowerCase();
+  if (!/^[a-z]{2,8}$/.test(src) || !/^[a-z]{2,8}$/.test(tgt) || src === tgt) return null;
+  return [src, tgt];
+}
+
+function translationPairKey(source, target) {
+  const pair = normalizeTranslationPair(source, target);
+  return pair ? `${pair[0]}:${pair[1]}` : null;
+}
+
+function loadTranslationConsent() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TRANSLATION_CONSENT_KEY) || '{}');
+    if (!raw || typeof raw !== 'object') return {};
+    const clean = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (value === true && /^[a-z]{2,8}:[a-z]{2,8}$/.test(key)) clean[key] = true;
+    }
+    return clean;
+  } catch {
+    return {};
+  }
+}
+
+function saveTranslationConsent(consent) {
+  try {
+    localStorage.setItem(TRANSLATION_CONSENT_KEY, JSON.stringify(consent));
+  } catch {
+    // Consent cannot be persisted (private mode/quota); the in-memory copy is
+    // still used for this session, and the next enable will ask again.
+  }
+}
+
+function hasTranslationConsent(source, target) {
+  const key = translationPairKey(source, target);
+  return !!key && State.translationConsent[key] === true;
+}
+
+function grantTranslationConsent(source, targets) {
+  let changed = false;
+  for (const target of Array.isArray(targets) ? targets : []) {
+    const key = translationPairKey(source, target);
+    if (key && !State.translationConsent[key]) {
+      State.translationConsent[key] = true;
+      changed = true;
+    }
+  }
+  if (changed) saveTranslationConsent(State.translationConsent);
+  return changed;
+}
 
 // ── Browser-based translation (Chrome Built-in AI Translator API) ─────────────
 // Translation is progressive enhancement and off by default.
@@ -889,12 +949,20 @@ const Translation = {
   // Calls the optional onProgress(pct) callback during model download.
   // Returns null when the pair is unavailable or creation fails.
   async ensurePair(source, target, { onProgress } = {}) {
-    const key = `${source}:${target}`;
+    const pair = normalizeTranslationPair(source, target);
+    if (!pair) return null;
+    const [src, tgt] = pair;
+    const key = `${src}:${tgt}`;
     if (this._cache.has(key)) return this._cache.get(key);
+
+    if (!hasTranslationConsent(src, tgt)) {
+      this.setStatus('Translation needs permission to download Chrome\'s model', 'checking');
+      return null;
+    }
 
     let availability;
     try {
-      availability = await window.Translator.availability({ sourceLanguage: source, targetLanguage: target });
+      availability = await window.Translator.availability({ sourceLanguage: src, targetLanguage: tgt });
     } catch {
       return null;
     }
@@ -902,8 +970,8 @@ const Translation = {
 
     try {
       const translator = await window.Translator.create({
-        sourceLanguage: source,
-        targetLanguage: target,
+        sourceLanguage: src,
+        targetLanguage: tgt,
         monitor(m) {
           m.addEventListener('downloadprogress', (e) => {
             if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -922,8 +990,14 @@ const Translation = {
   // models are ready before the user speaks.  Shows live combined progress.
   async preWarmTranslators(source, targets) {
     if (!this.isSupported() || !targets.length) return;
-    const pairs = targets.filter((t) => t !== source);
-    if (!pairs.length) return;
+    const blocked = targets.filter((t) => t !== source && !hasTranslationConsent(source, t));
+    const pairs = targets.filter((t) => t !== source && hasTranslationConsent(source, t));
+    if (!pairs.length) {
+      if (blocked.length) {
+        this.setStatus('Translation needs permission to download Chrome\'s model', 'checking');
+      }
+      return;
+    }
 
     const progress = Object.fromEntries(pairs.map((t) => [t, 0]));
 
@@ -973,8 +1047,14 @@ const Translation = {
 
     if (!cleanTargets.length) return [];
 
+    const approvedTargets = cleanTargets.filter((target) => hasTranslationConsent(source, target));
+    if (!approvedTargets.length) {
+      this.setStatus('Translation needs permission to download Chrome\'s model', 'checking');
+      return [];
+    }
+
     const results = await Promise.allSettled(
-      cleanTargets.map(async (target) => {
+      approvedTargets.map(async (target) => {
         const translator = await this.ensurePair(source, target);
         if (!translator) return null;
         const out = await translator.translate(text);
@@ -989,6 +1069,74 @@ const Translation = {
 };
 
 // ── Translation controls (opt-in + compact dropdown, max 2 targets) ──────────
+function translationConsentLabel(tag) {
+  const meta = languageMeta(tag);
+  return meta ? meta.label : String(tag || '').toUpperCase();
+}
+
+async function requestTranslationConsent(source, targets) {
+  const pairs = (Array.isArray(targets) ? targets : [])
+    .map((target) => normalizeTranslationPair(source, target))
+    .filter(Boolean);
+  const missing = pairs.filter(([src, tgt]) => !hasTranslationConsent(src, tgt));
+  if (!missing.length) return true;
+
+  const dialog = document.getElementById('translation-consent-dialog');
+  const body = document.getElementById('translation-consent-body');
+  if (!dialog || !body) return false;
+  if (dialog.open) return false;
+
+  body.textContent = '';
+  const intro = document.createElement('p');
+  intro.textContent = 'Chrome will download a translation model (about 5–20 MB) from Google for:';
+  body.appendChild(intro);
+
+  const list = document.createElement('ul');
+  for (const [src, tgt] of missing) {
+    const item = document.createElement('li');
+    item.textContent = `${translationConsentLabel(src)} → ${translationConsentLabel(tgt)}`;
+    list.appendChild(item);
+  }
+  body.appendChild(list);
+
+  const note = document.createElement('p');
+  note.textContent = 'Chrome manages and stores the model on this device. EchoLocate never uploads your transcript.';
+  body.appendChild(note);
+
+  return new Promise((resolve) => {
+    let allowed = false;
+    const controller = new AbortController();
+    const approve = document.getElementById('translation-consent-approve');
+    const cancel = document.getElementById('translation-consent-cancel');
+
+    const onClose = () => {
+      controller.abort();
+      resolve(allowed);
+    };
+    dialog.addEventListener('close', onClose, { once: true });
+
+    if (approve) {
+      approve.addEventListener('click', () => {
+        grantTranslationConsent(source, missing.map(([, tgt]) => tgt));
+        allowed = true;
+        dialog.close();
+      }, { signal: controller.signal });
+    }
+    if (cancel) {
+      cancel.addEventListener('click', () => dialog.close(), { signal: controller.signal });
+    }
+
+    try {
+      dialog.showModal();
+      if (approve) approve.focus();
+    } catch {
+      controller.abort();
+      dialog.removeEventListener('close', onClose);
+      resolve(false);
+    }
+  });
+}
+
 async function initTranslationControls() {
   const toggle   = document.getElementById('translation-enabled-toggle');
   const langBtn  = document.getElementById('translation-lang-btn');
@@ -1008,7 +1156,7 @@ async function initTranslationControls() {
     help.classList.remove('hidden');
     Translation.setStatus('Not available in this browser', 'unsupported');
   } else {
-    help.textContent = 'First use downloads a small model (5–20 MB) locally. Captions continue normally during download.';
+    help.textContent = 'Chrome downloads a small model (5–20 MB) only after you allow it. Captions continue normally during download.';
     help.classList.remove('hidden');
   }
 
@@ -1033,7 +1181,8 @@ async function initTranslationControls() {
     wrapper.appendChild(span);
     list.appendChild(wrapper);
 
-    checkbox.addEventListener('change', () => {
+    checkbox.addEventListener('change', async () => {
+      const previous = State.translationTargets.slice();
       const selected = Array.from(
         list.querySelectorAll('input[type="checkbox"]:checked')
       ).map((el) => el.value);
@@ -1053,7 +1202,17 @@ async function initTranslationControls() {
 
       if (State.translationEnabled && State.translationCapability === 'supported' && selected.length) {
         const src = Translation.sourceFromTag(State.recognitionLang);
-        Translation.preWarmTranslators(src, selected).catch(() => {});
+        const allowed = await requestTranslationConsent(src, selected);
+        if (!allowed) {
+          checkbox.checked = false;
+          State.translationTargets = previous;
+          localStorage.setItem('echolocate-translation-targets', JSON.stringify(previous));
+          updateLangBtnLabel();
+          refreshAllLaneTranslationControls();
+          Translation.setStatus('Model download not allowed — target not added', 'checking');
+          return;
+        }
+        Translation.preWarmTranslators(src, State.translationTargets).catch(() => {});
       }
     });
   }
@@ -1119,8 +1278,31 @@ async function initTranslationControls() {
   toggle.checked  = State.translationEnabled && State.translationCapability === 'supported';
   toggle.disabled = State.translationCapability !== 'supported';
 
-  const syncEnabledState = () => {
+  const syncEnabledState = async ({ prompt = true } = {}) => {
     const enabled = !!toggle.checked && State.translationCapability === 'supported';
+
+    if (enabled && State.translationTargets.length) {
+      const src = Translation.sourceFromTag(State.recognitionLang);
+      const allowed = prompt
+        ? await requestTranslationConsent(src, State.translationTargets)
+        : State.translationTargets.every((target) => hasTranslationConsent(src, target));
+      if (!allowed) {
+        toggle.checked = false;
+        State.translationEnabled = false;
+        localStorage.setItem('echolocate-translation-enabled', '0');
+        refreshAllLaneTranslationControls();
+        closeDropdown();
+        langBtn.hidden = true;
+        Translation.setStatus(
+          prompt
+            ? 'Translation not enabled — model download not allowed'
+            : 'Translation needs permission to download Chrome\'s model',
+          'checking',
+        );
+        return;
+      }
+    }
+
     State.translationEnabled = enabled;
     localStorage.setItem('echolocate-translation-enabled', enabled ? '1' : '0');
     refreshAllLaneTranslationControls();
@@ -1140,13 +1322,15 @@ async function initTranslationControls() {
       return;
     }
 
-    // Pre-warm all selected pairs in the background immediately on enable
+    // Pre-warm all approved pairs in the background immediately on enable.
     const src = Translation.sourceFromTag(State.recognitionLang);
     Translation.preWarmTranslators(src, State.translationTargets).catch(() => {});
   };
 
-  syncEnabledState();
-  toggle.addEventListener('change', syncEnabledState);
+  syncEnabledState({ prompt: false }).catch((err) => console.warn('[EchoLocate] Translation init failed:', err.message));
+  toggle.addEventListener('change', () => {
+    syncEnabledState().catch((err) => console.warn('[EchoLocate] Translation toggle failed:', err.message));
+  });
   updateLangBtnLabel();
   refreshAllLaneTranslationControls();
 }
@@ -2046,8 +2230,9 @@ function languageMeta(tag) {
   if (tag === '') return LANGUAGE_OPTIONS.find((l) => l.code === '') || null;
   if (!tag) return null;
   const base = tag.toLowerCase();
-  return LANGUAGE_OPTIONS.find((l) => l.code.toLowerCase() === base)
-    || LANGUAGE_OPTIONS.find((l) => base.startsWith(l.code.toLowerCase().split('-')[0]))
+  // Ignore the empty "None (Auto)" code: every string startsWith('').
+  return LANGUAGE_OPTIONS.find((l) => l.code && l.code.toLowerCase() === base)
+    || LANGUAGE_OPTIONS.find((l) => l.code && base.startsWith(l.code.toLowerCase().split('-')[0]))
     || null;
 }
 
@@ -2751,7 +2936,13 @@ function initLaneTranslationControls(profile) {
     const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
     if (effectiveTargets.length) {
       const source = Translation.sourceFromTag(profile.languageTag || State.recognitionLang || 'en');
-      Translation.preWarmTranslators(source, effectiveTargets).catch(() => {});
+      requestTranslationConsent(source, effectiveTargets).then((allowed) => {
+        if (allowed) {
+          Translation.preWarmTranslators(source, effectiveTargets).catch(() => {});
+        } else {
+          Translation.setStatus('Translation needs permission to download Chrome\'s model', 'checking');
+        }
+      }).catch((err) => console.warn('[EchoLocate] Translation consent failed:', err.message));
     }
   };
 

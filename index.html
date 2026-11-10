@@ -85,6 +85,20 @@
     </div>
   </dialog>
 
+  <!-- Chrome translation-model consent — no Translator.create until accepted -->
+  <dialog id="translation-consent-dialog" aria-labelledby="translation-consent-title" aria-describedby="translation-consent-body">
+    <div class="speech-modal-content">
+      <div class="speech-modal-header">
+        <h2 id="translation-consent-title" class="speech-modal-title">Download Chrome's translation model?</h2>
+      </div>
+      <div id="translation-consent-body" class="speech-modal-body"></div>
+      <div class="speech-modal-footer">
+        <button id="translation-consent-cancel" class="btn btn-secondary" type="button">Not now</button>
+        <button id="translation-consent-approve" class="btn btn-primary" type="button">Allow translation</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Local model consent — nothing is downloaded until this is accepted -->
   <dialog id="model-consent-dialog" aria-labelledby="model-consent-title" aria-describedby="model-consent-body">
     <div class="speech-modal-content">
@@ -375,6 +389,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-6"></script>
+  <script src="app.js?v=20261110-7"></script>
 </body>
 </html>

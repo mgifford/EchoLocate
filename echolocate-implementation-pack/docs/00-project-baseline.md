@@ -22,7 +22,8 @@ Current runtime:
 - **Caption pipeline:** final captions render and persist before optional
   translation; translation patches the card afterwards via a stable
   `data-segment-id`. Commits are serialized so two finals cannot interleave.
-- **Other features:** Chrome Translator API (opt-in), system/computer audio via
+- **Other features:** Chrome Translator API (opt-in, per-pair consent before the
+  browser downloads a model), system/computer audio via
   `getDisplayMedia`, chat view, debug console, vendored `franc-min` language
   detection with a heuristic fallback, audio-device picker.
 - **Storage:** localStorage cards (500-card cap). Quota failures and the trim
@@ -40,7 +41,7 @@ Current runtime:
 - **Security:** meta CSP with self-only defaults, a hashed import map, external
   theme bootstrap, no eval/inline scripts, `wasm-unsafe-eval`, inline styles and
   local-only `connect-src`.
-- **Tests:** 348 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
+- **Tests:** 357 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
   is no CI workflow yet.
 
 ## Historical problem statement (original review, still useful context)
