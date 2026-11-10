@@ -30,9 +30,10 @@ Related material:
   notice, forced-colors fallbacks, modal dismissal-key fix, and a bounded
   service-worker boot wait. See
   <https://github.com/mgifford/EchoLocate/pull/58>.
-- **Reliability pass** (this PR): storage failures and the 500-card trim are
+- **Reliability pass** (PR #59): storage failures and the 500-card trim are
   visible and announced, caption commits are serialized, and the service
-  worker returns a real 503 with a versioned cache and cleanup.
+  worker returns a real 503 with a versioned cache and cleanup. See
+  <https://github.com/mgifford/EchoLocate/pull/59>.
 
 ## Next
 
