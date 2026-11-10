@@ -19,6 +19,7 @@ Primary runtime pieces:
 - Confidence context is attached per card in metadata (high/medium/low wording)
 - Session cards persist in localStorage and can be exported as VTT; write failures and the 500-card trim are surfaced in the footer
 - Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
+- Capability probing (Web Speech, on-device status, WebGPU adapter, WASM, storage) is local-only and shown in Debug
 - Light/dark theme toggle is persisted in localStorage
 
 ## Working Agreements For Agents And Contributors

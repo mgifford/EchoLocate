@@ -17,10 +17,12 @@ Chosen experiment mode: `webgpu-local` + `advanced`. Do not make it the default 
 | Speaker `basic` | Implemented (Meyda + pitch). |
 | Speaker `off` / `advanced` | Not implemented; `advanced` is the diarization work. |
 
-The current capability checks cover secure context, `getUserMedia`, Web Speech
-presence, on-device `available()`/`install()` and the engine choice. WebGPU
-adapter/limits, WASM features, storage estimate and a full engine registry
-remain in PR 1.
+The capability snapshot now covers secure context, `getUserMedia`, Web Speech
+presence, on-device `available()`/`install()`, a WebGPU adapter probe (API vs
+adapter found, never a model run), WASM support/SIMD/threads and a storage
+estimate. It records a reason for each unavailable engine and runs no network
+requests. The Chrome-version mic-analysis gate remains, reported as
+`compatibility.captionsOnly`, until it can be replaced and device-tested.
 
 ## Capability detection
 

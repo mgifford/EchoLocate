@@ -1689,3 +1689,174 @@ describe('caption commit queue', () => {
     assert.deepEqual(c.window.__order, ['b']);
   });
 });
+
+// ── SpeechAdapter contract ────────────────────────────────────────────────────
+
+describe('SpeechAdapter contract', () => {
+  it('exposes the same interface for both engines', () => {
+    const c = loadApp();
+    const result = vm.runInContext(`(() => {
+      const methods = ['init', 'start', 'stop', 'setLanguage', 'dispose', 'isAvailable'];
+      const out = {};
+      for (const id of ['browser-service', 'browser-local']) {
+        const adapter = getSpeechAdapter(id);
+        out[id] = {
+          engine: adapter.engine,
+          complete: methods.every((name) => typeof adapter[name] === 'function'),
+          requiresNetwork: adapter.requiresNetwork,
+        };
+      }
+      return out;
+    })()`, c);
+
+    assert.equal(result['browser-service'].engine, 'browser-service');
+    assert.equal(result['browser-service'].complete, true);
+    assert.equal(result['browser-service'].requiresNetwork, true);
+    assert.equal(result['browser-local'].engine, 'browser-local');
+    assert.equal(result['browser-local'].complete, true);
+    assert.equal(result['browser-local'].requiresNetwork, false);
+  });
+
+  it('falls back to the browser service for an unknown engine', () => {
+    const c = loadApp();
+    assert.equal(vm.runInContext(`getSpeechAdapter('nope').engine`, c), 'browser-service');
+  });
+
+  it('caches one adapter per engine', () => {
+    const c = loadApp();
+    const same = vm.runInContext(`
+      getSpeechAdapter('browser-local') === getSpeechAdapter('browser-local')
+    `, c);
+    assert.equal(same, true);
+  });
+
+  it('delegates init/start/stop to the recognizer implementation', async () => {
+    const c = loadApp();
+    vm.runInContext(`
+      State.recognitionEngine = 'browser-local';
+      window.__calls = [];
+      const originalInit = SpeechEngine.init;
+      const originalStart = SpeechEngine.start;
+      const originalStop = SpeechEngine.stop;
+      SpeechEngine.init = () => window.__calls.push('init');
+      SpeechEngine.start = () => { window.__calls.push('start'); return Promise.resolve(); };
+      SpeechEngine.stop = () => window.__calls.push('stop');
+
+      const adapter = getSpeechAdapter();
+      adapter.init();
+      adapter.start();
+      adapter.stop();
+
+      SpeechEngine.init = originalInit;
+      SpeechEngine.start = originalStart;
+      SpeechEngine.stop = originalStop;
+    `, c);
+    assert.deepEqual(c.window.__calls, ['init', 'start', 'stop']);
+  });
+
+  it('writes the recognizer language through setLanguage', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      SpeechEngine._rec = { lang: '' };
+      getSpeechAdapter('browser-service').setLanguage('fr-FR');
+      window.__lang = SpeechEngine._rec.lang;
+    `, c);
+    assert.equal(c.window.__lang, 'fr-FR');
+  });
+});
+
+// ── Capability detection ──────────────────────────────────────────────────────
+
+describe('capability detection', () => {
+  it('classifies WASM features without compiling untrusted code', () => {
+    const fn = ctx.detectWasmFeatures;
+    assert.deepEqual(fn({ validate: () => true }, {}), { supported: true, simd: true, threads: false });
+    assert.deepEqual(fn({ validate: () => false }, { crossOriginIsolated: true }), { supported: true, simd: false, threads: true });
+    assert.deepEqual(fn(null, {}), { supported: false, simd: false, threads: false });
+  });
+
+  it('probes WebGPU without requesting model weights', async () => {
+    const c = loadApp();
+    assert.equal((await vm.runInContext('probeWebGpu(null)', c)).api, false);
+    assert.equal(
+      (await vm.runInContext('probeWebGpu({ requestAdapter: () => Promise.resolve({}) })', c)).adapter,
+      true,
+    );
+    assert.equal(
+      (await vm.runInContext('probeWebGpu({ requestAdapter: () => Promise.resolve(null) })', c)).adapter,
+      false,
+    );
+    const failed = await vm.runInContext('probeWebGpu({ requestAdapter: () => Promise.reject(new Error("blocked")) })', c);
+    assert.equal(failed.api, true);
+    assert.equal(failed.adapter, false);
+    assert.equal(failed.reason, 'blocked');
+  });
+
+  it('reports engine availability from mocked globals', async () => {
+    const c = loadApp();
+    const snapshot = await vm.runInContext(`detectCapabilities({
+      win: { isSecureContext: true, SpeechRecognition: class {} },
+      nav: {
+        mediaDevices: { getUserMedia() {} },
+        gpu: { requestAdapter: () => Promise.resolve({}) },
+      },
+      storage: { estimate: () => Promise.resolve({ usage: 123, quota: 456789 }) },
+    })`, c);
+
+    assert.equal(snapshot.secureContext, true);
+    assert.equal(snapshot.microphone, true);
+    assert.equal(snapshot.webSpeech.supported, true);
+    assert.equal(snapshot.webSpeech.onDevice, 'unsupported');
+    assert.equal(snapshot.webgpu.adapter, true);
+    assert.equal(snapshot.storage.quota, 456789);
+    assert.equal(snapshot.engines['browser-service'].available, true);
+    assert.equal(snapshot.engines['browser-local'].available, false);
+    assert.equal(snapshot.engines['webgpu-local'].available, false);
+    assert.equal(snapshot.engines['webgpu-local'].planned, true);
+    assert.equal(snapshot.engines['wasm-local'].planned, true);
+  });
+
+  it('maps on-device availability to the browser-local engine', async () => {
+    const c = loadApp();
+    const snapshot = await vm.runInContext(`(() => {
+      const SR = class {};
+      SR.available = () => Promise.resolve('downloadable');
+      SR.install = () => Promise.resolve(true);
+      return detectCapabilities({
+        win: { isSecureContext: true, SpeechRecognition: SR },
+        nav: {},
+        storage: null,
+      });
+    })()`, c);
+
+    assert.equal(snapshot.webSpeech.onDevice, 'downloadable');
+    assert.equal(snapshot.engines['browser-local'].available, true);
+    assert.equal(snapshot.engines['browser-local'].status, 'downloadable');
+    assert.equal(snapshot.storage, null);
+  });
+
+  it('does not require network access to produce a snapshot', async () => {
+    const c = loadApp();
+    c.fetch = () => { throw new Error('network must not be used'); };
+    const snapshot = await vm.runInContext(`detectCapabilities({
+      win: { isSecureContext: false, SpeechRecognition: null },
+      nav: { mediaDevices: null, gpu: null },
+      storage: null,
+    })`, c);
+    assert.equal(snapshot.secureContext, false);
+    assert.equal(snapshot.microphone, false);
+    assert.equal(snapshot.webSpeech.supported, false);
+    assert.equal(snapshot.engines['browser-service'].available, false);
+  });
+
+  it('caches the snapshot on State when refreshed', async () => {
+    const c = loadApp();
+    const snapshot = await vm.runInContext(`refreshCapabilities({
+      win: { isSecureContext: true, SpeechRecognition: null },
+      nav: { mediaDevices: null, gpu: null },
+      storage: null,
+    })`, c);
+    assert.equal(snapshot.secureContext, true);
+    assert.equal(vm.runInContext('State.capabilities.secureContext', c), true);
+  });
+});

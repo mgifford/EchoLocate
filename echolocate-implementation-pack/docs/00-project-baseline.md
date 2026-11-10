@@ -33,7 +33,7 @@ Current runtime:
 - **Accessibility:** Label in Name fixes, one interim live region, non-modal
   translation popup with focus return, reopenable privacy notice, forced-colors
   fallbacks, and a bounded service-worker boot wait.
-- **Tests:** 315 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
+- **Tests:** 326 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
   is no CI workflow yet.
 
 ## Historical problem statement (original review, still useful context)
@@ -64,8 +64,10 @@ Observed logic in `app.js`: `resolveSpeakerProfile()`,
    diarization confidence. **Open.**
 6. A single blended prototype loses speaker variation and provenance. **Open.**
 7. Browser/model availability must not be inferred from the user agent.
-   **Partially fixed:** the engine selector uses `available()`/`install()`; the
-   Chrome ≤149 mic-analysis gate is still UA-version based.
+   **Mostly fixed:** the engine selector and capability snapshot use feature
+   checks (`available()`/`install()`, WebGPU adapter, WASM, storage); the
+   Chrome ≤149 mic-analysis workaround is still UA-version based and is now
+   reported as `compatibility.captionsOnly`.
 8. "Audio stays on-device" conflicted with cloud-backed Web Speech. **Fixed**
    in PR #55 across the notice and docs.
 
