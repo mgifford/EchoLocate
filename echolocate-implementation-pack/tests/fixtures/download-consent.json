@@ -1,0 +1,17 @@
+{
+  "description": "Model weights must not be requested until explicit user approval.",
+  "states": [
+    "available-not-installed",
+    "awaiting-consent",
+    "downloading",
+    "verifying",
+    "initializing",
+    "ready"
+  ],
+  "assertions": [
+    "no model weight fetch before consent",
+    "declining consent leaves app functional",
+    "cancel leaves no false ready state",
+    "retry after cache eviction requires appropriate action"
+  ]
+}

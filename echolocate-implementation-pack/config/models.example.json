@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "deployable": false,
+  "notes": "EXAMPLE ONLY. Missing exact model revisions, sizes, SHA-256 checksums and verified licenses. Do not use to download.",
+  "models": [
+    {
+      "id": "stt-webgpu-placeholder",
+      "role": "speech-to-text",
+      "sourceUrl": "https://huggingface.co/",
+      "revision": "VERIFY_PINNED_REVISION",
+      "license": "VERIFY_FROM_MODEL_CARD",
+      "declaredBytes": null,
+      "artifacts": [],
+      "backends": [
+        "webgpu"
+      ],
+      "consentRequired": true
+    },
+    {
+      "id": "pyannote-segmentation-example",
+      "role": "speaker-segmentation",
+      "sourceUrl": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0",
+      "revision": "VERIFY_PINNED_REVISION",
+      "license": "VERIFY_FROM_MODEL_CARD",
+      "declaredBytes": null,
+      "artifacts": [],
+      "backends": [
+        "wasm"
+      ],
+      "consentRequired": true
+    },
+    {
+      "id": "wespeaker-embedding-example",
+      "role": "speaker-embeddings",
+      "sourceUrl": "https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM",
+      "revision": "VERIFY_PINNED_REVISION",
+      "license": "VERIFY_FROM_MODEL_CARD",
+      "declaredBytes": null,
+      "artifacts": [],
+      "backends": [
+        "wasm"
+      ],
+      "consentRequired": true
+    }
+  ]
+}

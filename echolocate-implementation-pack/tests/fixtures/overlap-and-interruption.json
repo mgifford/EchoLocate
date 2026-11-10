@@ -1,0 +1,40 @@
+{
+  "description": "One interruption shorter than reliable enrollment and one overlap.",
+  "turns": [
+    {
+      "startMs": 0,
+      "endMs": 7500,
+      "truth": [
+        "A"
+      ]
+    },
+    {
+      "startMs": 7100,
+      "endMs": 7800,
+      "truth": [
+        "A",
+        "B"
+      ]
+    },
+    {
+      "startMs": 7800,
+      "endMs": 8600,
+      "truth": [
+        "B"
+      ]
+    },
+    {
+      "startMs": 8600,
+      "endMs": 16000,
+      "truth": [
+        "A"
+      ]
+    }
+  ],
+  "requirements": [
+    "do not enroll overlap",
+    "support Unknown for short B",
+    "allow multi-speaker interval",
+    "no text loss"
+  ]
+}

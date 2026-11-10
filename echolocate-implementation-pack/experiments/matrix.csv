@@ -1,0 +1,11 @@
+experiment_id,question,variants,dataset_or_fixture,device_browser,model_revisions,metric,baseline_result,candidate_result,finding,evidence_link,status
+E01,Clean panel speaker stability,Meyda baseline,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E02,Embedding-only clustering,WeSpeaker only,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E03,Segmentation plus embedding,PyAnnote + WeSpeaker,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E04,Benefit of adaptive profiles,adaptation OFF vs ON,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E05,Unknown after speaker cap,"speaker cap 3, voice 4",TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E06,Short interruptions and similar voices,high overlap vs low overlap,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E07,ASR and diarization alignment,speaker turn inside ASR segment,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E08,WebGPU ASR latency and accuracy,Whisper vs Parakeet vs browser,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E09,Cache and offline recovery,cold/warm/offline/interrupted,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
+E10,Compatibility and resource impact,desktop/mobile WebGPU/WASM,TO_SELECT,TO_MEASURE,TO_PIN,TO_DEFINE,,,,,planned
