@@ -21,6 +21,7 @@ Primary runtime pieces:
 - Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
 - Capability probing (Web Speech, on-device status, WebGPU adapter, WASM, storage) is local-only and shown in Debug
 - Model installs require exact-revision consent and SHA-256 verification; `models/manifest.json` is empty until an engine ships
+- A meta CSP allows scripts only from self plus the hashed import map; no eval or arbitrary inline scripts. Add model hosts to `connect-src` before download support ships
 - Light/dark theme toggle is persisted in localStorage
 
 ## Working Agreements For Agents And Contributors

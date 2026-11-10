@@ -2,6 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <!--
+    GitHub Pages cannot set response headers, so the policy lives in a meta tag
+    and must appear before any resource it governs. style-src needs
+    'unsafe-inline' because cards and lanes use inline custom properties.
+    script-src allows the vendored ESM modules, the hashed import map, and
+    WebAssembly compilation; it deliberately does not allow eval or arbitrary
+    inline scripts. Add model hosts to connect-src before shipping a model.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-B+nDs9FqxHg5pl/2RDYjCVY34Kq2Ux3svHSiqi4U8z8=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="EchoLocate Phase 1 — Real-time accessible live captions with simulated speaker diarization" />
   <title>EchoLocate — Live Captions</title>
@@ -9,13 +18,7 @@
     Read theme from localStorage before CSS parses — prevents flash of wrong theme.
     Default falls back to OS preference; if none, we default to dark.
   -->
-  <script>
-    (function () {
-      var s = localStorage.getItem('echolocate-theme');
-      var t = s || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', t);
-    }());
-  </script>
+  <script src="theme-init.js"></script>
   <!--
     franc-min (vendored) imports two bare module specifiers. This import map
     keeps language detection fully offline. Without it the vendored import

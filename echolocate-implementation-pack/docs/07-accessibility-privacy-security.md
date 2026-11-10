@@ -17,6 +17,15 @@ EchoLocate is an accessibility service; silent failure is high severity. Keep ca
 - Pin exact model revisions, runtimes, artifact hashes and licenses. Do not load arbitrary unreviewed model URLs from user settings.
 - Consider model weight download limits, cache poisoning, DoS via very large files, and retry storms.
 - Use a strict Content Security Policy compatible with needed workers/WASM/WebGPU; document third-party network origins.
+
+**Implemented 2026-11-10:** a meta CSP (GitHub Pages cannot set headers) with
+`default-src 'self'`; `script-src 'self' 'sha256-<import map>' 'wasm-unsafe-eval'`
+(no eval, no unsafe-inline); `style-src 'self' 'unsafe-inline'` for inline card
+variables; `connect-src 'self'`; `worker-src 'self' blob:`; `object-src
+'none'`; `base-uri 'self'`; `form-action 'self'`; `frame-src 'none'`. The theme
+bootstrap is external (`theme-init.js`). Model hosts must be added to
+`connect-src` before PR 3 downloads ship. `frame-ancestors` is unavailable in a
+meta policy.
 - Sanitization, transcript export escaping and locally posted HTMX/SW fragments need regression tests.
 - Minimize telemetry; never log raw audio, embeddings or private transcripts by default.
 
