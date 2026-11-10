@@ -121,6 +121,19 @@ body {
 /* Enforce the HTML hidden attribute over any author-set display values. */
 [hidden] { display: none !important; }
 
+/* Visually hidden but still exposed to assistive technology. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Accessibility: reduced-motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -1307,6 +1320,27 @@ body {
   text-underline-offset: 2px;
 }
 
+.privacy-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--accent-a);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.privacy-link:hover,
+.privacy-link:focus-visible {
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .privacy-link {
+  color: #1f6fd1;
+}
+
 .footer-community a:hover,
 .footer-community a:focus-visible {
   opacity: 0.85;
@@ -1682,5 +1716,43 @@ body.view-lanes .lanes-grid { display: grid  !important; }
   .empty-stage {
     width: calc(100% - 1rem);
     padding: 0.95rem 0.85rem;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORCED COLORS / HIGH CONTRAST
+   Author colours are replaced by the user's palette, so cues that relied on
+   colour alone need an explicit system-colour fallback.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .status-dot,
+  .lane-dot {
+    border: 1px solid CanvasText;
+  }
+
+  .confidence-meter {
+    border: 1px solid CanvasText;
+  }
+
+  .confidence-fill {
+    background: CanvasText;
+  }
+
+  .confidence-value {
+    color: CanvasText;
+  }
+
+  .low-confidence {
+    text-decoration-color: CanvasText;
+  }
+
+  .lane.active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }

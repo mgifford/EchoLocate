@@ -22,6 +22,13 @@ Related material:
   attribution at the speaker cap, captions before translation, Start/Stop
   recovery, fully offline `franc`, regression tests. See
   <https://github.com/mgifford/EchoLocate/pull/55>.
+- **PR #57** (merged): experimental on-device speech engine, engine selector,
+  availability/install flow. See
+  <https://github.com/mgifford/EchoLocate/pull/57>.
+- **A11y semantics pass** (this PR): Label in Name, a single interim live
+  region, non-modal translation popup with focus return, reopenable privacy
+  notice, forced-colors fallbacks, modal dismissal-key fix, and a bounded
+  service-worker boot wait.
 
 ## Next
 
@@ -35,12 +42,12 @@ Related material:
       presence, `SpeechRecognition.available({ langs, quality: 'conversation',
       processLocally: true })`, WebGPU adapter/limits, WASM, storage estimate.
       Record *why* something is unavailable. Never fetch weights to probe.
-- [ ] Add the experimental `browser-local` engine: `processLocally = true`,
+- [x] Add the experimental `browser-local` engine: `processLocally = true`,
       `available()`/`install()` behind an explicit user action, disclosure that
       the browser downloads a language pack, `language-not-supported`
-      handling, and `downloadable`/`downloading`/`unavailable` states.
-- [ ] Persist the chosen engine. Keep it independent from the speaker-analysis
-      setting (`off`/`basic`/`advanced`).
+      handling, and `downloadable`/`downloading`/`unavailable` states (PR #57).
+- [x] Persist the chosen engine. Keep it independent from the speaker-analysis
+      setting (`off`/`basic`/`advanced`) (PR #57).
 - [ ] Fall back only with disclosure: a local-to-cloud change needs explicit
       consent, and an unavailable engine must leave the other one usable.
 - [ ] Replace Chrome-version UA gates for the mic-analysis graph with a
@@ -62,18 +69,18 @@ Out of scope: WebGPU ASR, model consent, diarization changes.
 
 ### N2. Accessibility semantics pass
 
-- [ ] Fix Label in Name (WCAG 2.5.3) on the eight buttons whose `aria-label`
+- [x] Fix Label in Name (WCAG 2.5.3) on the eight buttons whose `aria-label`
       replaces the visible text: Save Chat, Copy Chat, Summarize, Debug,
       Stereo, Sys Audio, Clear Local, Layout toggle.
-- [ ] Stop duplicate live-region announcements: the interim card is
+- [x] Stop duplicate live-region announcements: the interim card is
       `role="status"` inside the `role="log"` lane, and the interim strip is
       `aria-atomic="true"` and rewritten per result.
-- [ ] Replace `role="dialog"` on the non-modal translation dropdown with a
+- [x] Replace `role="dialog"` on the non-modal translation dropdown with a
       non-modal popup pattern and return focus to the trigger.
-- [ ] Make the privacy notice reopenable after dismissal (help/about entry).
-- [ ] Add forced-colors handling for status and confidence cues; confirm no
+- [x] Make the privacy notice reopenable after dismissal (help/about entry).
+- [x] Add forced-colors handling for status and confidence cues; confirm no
       meaningful cue is colour-only.
-- [ ] Fix the modal dismissal key: closing an error dialog currently suppresses
+- [x] Fix the modal dismissal key: closing an error dialog currently suppresses
       the Edge/mobile setup dialog too.
 
 Acceptance: keyboard and screen-reader pass on the ACCESSIBILITY.md checklist;
@@ -85,6 +92,8 @@ no regression in lane announcement behaviour.
       footer always shows "Auto-saved ✓".
 - [ ] Make `CARD_LIMIT` (500) truncation visible; long sessions currently lose
       their start from VTT export with no warning.
+- [x] Bound the service-worker boot wait so a page without a controller still
+      initializes TranscriptCtrl and every control (fixed with the a11y pass).
 - [ ] Service worker: return a real 503 when the network fails and the cache
       misses (today the fallback can resolve to `undefined`); version and clean
       the cache; do not pre-cache model weights.
@@ -171,14 +180,10 @@ history, and no reference points at a file that does not exist.
 
 ## Known defects still open (2026-11 review)
 
-- Label in Name on eight buttons.
 - Storage quota silently ignored; "Auto-saved ✓" is unconditional.
 - `CARD_LIMIT` truncation not surfaced.
 - Service-worker offline fallback can resolve to `undefined`; cache is never
   versioned or cleaned.
-- Translation dropdown uses `role="dialog"` without dialog semantics or focus
-  return.
-- No forced-colors rules.
 - No CI workflow; only manual checks in AGENTS.md.
 - Chrome ≤149 detection is UA-version based and disables speaker analysis
   entirely.

@@ -610,8 +610,12 @@ async function initTranslationControls() {
     if (firstFocusable) firstFocusable.focus();
   }
   function closeDropdown() {
+    const hadFocus = dropdown.contains(document.activeElement);
     dropdown.classList.add('hidden');
     langBtn.setAttribute('aria-expanded', 'false');
+    // Do not strand focus inside a hidden popup. When the user clicked another
+    // control, the browser has already moved focus there and nothing is stolen.
+    if (hadFocus && !langBtn.hidden) langBtn.focus();
   }
 
   langBtn.addEventListener('click', (e) => {
@@ -619,9 +623,17 @@ async function initTranslationControls() {
     dropdown.classList.contains('hidden') ? openDropdown() : closeDropdown();
   });
   dropdown.addEventListener('click', (e) => e.stopPropagation());
+  dropdown.addEventListener('focusout', (e) => {
+    if (!dropdown.contains(e.relatedTarget) && e.relatedTarget !== langBtn) {
+      closeDropdown();
+    }
+  });
   document.addEventListener('click', closeDropdown);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
+      // Close the popup only; without this the Options panel's Escape handler
+      // also runs and closes the whole panel, taking focus with it.
+      e.stopImmediatePropagation();
       closeDropdown();
       langBtn.focus();
     }
@@ -637,8 +649,8 @@ async function initTranslationControls() {
     refreshAllLaneTranslationControls();
 
     if (!enabled) {
-      langBtn.hidden = true;
       closeDropdown();
+      langBtn.hidden = true;
       Translation.setStatus('', 'checking');
       return;
     }
@@ -762,6 +774,7 @@ function checkBrowserSupport() {
           '⚠ Edge: enable online speech recognition',
           EDGE_SETUP_HTML,
           'info',
+          EDGE_MODAL_DISMISSED_KEY,
         );
       });
     } else if (isEdgeBrowser() && !isWindowsBrowser() && !localStorage.getItem(EDGE_MODAL_DISMISSED_KEY)) {
@@ -772,6 +785,7 @@ function checkBrowserSupport() {
           '⚤ Edge on macOS: microphone permission needed',
           EDGE_MACOS_HTML,
           'info',
+          EDGE_MODAL_DISMISSED_KEY,
         );
       });
     } else if (isMobileBrowser() && !localStorage.getItem(MOBILE_MODAL_DISMISSED_KEY)) {
@@ -782,6 +796,7 @@ function checkBrowserSupport() {
           '⚠ Mobile: speech recognition may be limited',
           MOBILE_SPEECH_WARNING_HTML,
           'info',
+          MOBILE_MODAL_DISMISSED_KEY,
         );
       });
     }
@@ -993,9 +1008,14 @@ const MOBILE_MODAL_DISMISSED_KEY = 'echolocate-mobile-modal-dismissed';
 // controlled content.  The bodyHTML parameter is always sourced from the
 // module-level constants (EDGE_SETUP_HTML, SPEECH_BLOCKED_HTML) or inline
 // literals built with escapeHTML() for any dynamic parts.
-function showSpeechHelpModal(title, bodyHTML, level = 'error') {
+let modalDismissKey = null;
+
+function showSpeechHelpModal(title, bodyHTML, level = 'error', dismissKey = null) {
   const modal = document.getElementById('speech-help-modal');
   if (!modal) return;
+  // Only the proactive Edge/mobile guidance passes a key. Error dialogs must
+  // not suppress that guidance the next time it is needed.
+  modalDismissKey = dismissKey;
 
   const titleEl = document.getElementById('speech-modal-title');
   const bodyEl  = document.getElementById('speech-modal-body');
@@ -1016,15 +1036,14 @@ function initSpeechHelpModal() {
   const okBtn    = document.getElementById('speech-modal-ok');
   if (!modal) return;
 
-  const handleClose = () => {
-    modal.close();
-    // Remember that the user has seen the proactive info so we don't show it every load.
-    if (isEdgeBrowser()) {
-      localStorage.setItem(EDGE_MODAL_DISMISSED_KEY, '1');
-    } else if (isMobileBrowser()) {
-      localStorage.setItem(MOBILE_MODAL_DISMISSED_KEY, '1');
-    }
-  };
+  const handleClose = () => modal.close();
+
+  // Covers every way the dialog can close (buttons, backdrop, native Escape),
+  // so proactive guidance is remembered and an error dialog never is.
+  modal.addEventListener('close', () => {
+    if (modalDismissKey) localStorage.setItem(modalDismissKey, '1');
+    modalDismissKey = null;
+  });
 
   if (closeBtn) closeBtn.addEventListener('click', handleClose);
   if (okBtn)    okBtn.addEventListener('click', handleClose);
@@ -1059,6 +1078,16 @@ function initTheme() {
   });
 }
 
+function withTimeout(promise, ms) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), ms);
+    Promise.resolve(promise).then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      () => { clearTimeout(timer); resolve('error'); },
+    );
+  });
+}
+
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) {
     console.warn('[EchoLocate] Service workers not supported in this browser — HTMX card fragments will not work.');
@@ -1067,18 +1096,27 @@ async function registerServiceWorker() {
   try {
     const reg = await navigator.serviceWorker.register('./sw.js');
     console.log('[EchoLocate] Service worker registered (scope:', reg.scope, ')');
-    await navigator.serviceWorker.ready;
     // navigator.serviceWorker.ready resolves when the SW is *active*, but
     // clients.claim() inside the activate handler may not have completed yet,
     // leaving a window where the SW is active but not yet controlling this page.
     // If that happens the htmx API POSTs bypass the SW and hit GitHub Pages
-    // directly, which returns 405.  Wait for the controller to be set first.
+    // directly, which returns 405.  Wait briefly for the controller, but never
+    // block boot forever: a hard reload can bypass the controller entirely and
+    // an unbounded wait leaves Start/Stop and every control unbound.
+    await withTimeout(navigator.serviceWorker.ready, 1500);
     if (!navigator.serviceWorker.controller) {
-      await new Promise((resolve) => {
-        navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
-      });
+      await withTimeout(
+        new Promise((resolve) => {
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+        }),
+        1500,
+      );
     }
-    console.log('[EchoLocate] Service worker active and controlling page.');
+    if (navigator.serviceWorker.controller) {
+      console.log('[EchoLocate] Service worker active and controlling page.');
+    } else {
+      console.warn('[EchoLocate] Service worker active but not controlling this page — card rendering may be unavailable until reload.');
+    }
   } catch (err) {
     console.warn('[EchoLocate] SW registration skipped:', err.message);
   }
@@ -1787,7 +1825,7 @@ function applyView(view) {
 
   const inChat = normalized === 'chat';
   const label = inChat ? 'Layout: Chat' : 'Layout: Lanes';
-  const ariaLabel = inChat ? 'Switch layout (currently chat)' : 'Switch layout (currently lanes)';
+  const ariaLabel = inChat ? 'Layout: Chat — switch to lanes view' : 'Layout: Lanes — switch to chat view';
 
   // Keep both the primary toolbar toggle and the options-panel alt toggle in sync.
   for (const id of ['btn-view-toggle', 'btn-view-toggle-alt']) {
@@ -2489,17 +2527,24 @@ async function postChatMsg(cardData) {
 
 const TranscriptCtrl = {
   _liveEl: null,
+  _srLiveEl: null,
   _interimCardEl: null,
   _interimProfile: null,
 
   init() {
     this._liveEl = document.getElementById('live-transcript');
+    this._srLiveEl = document.getElementById('interim-live');
   },
 
   showInterim(text) {
     if (text && !State.currentUtteranceStartedAt) {
       State.currentUtteranceStartedAt = Date.now();
     }
+
+    // One polite live region announces in-progress speech; the visible strip
+    // and inline card are aria-hidden so they cannot announce twice or nest a
+    // status region inside the lane log.
+    if (this._srLiveEl) this._srLiveEl.textContent = text || '';
 
     // Always clear the bottom strip; it serves as fallback only
     if (this._liveEl) {
@@ -2533,9 +2578,8 @@ const TranscriptCtrl = {
     if (!this._interimCardEl) {
       const card = document.createElement('article');
       card.className = 'card card-tone-mid card-interim-live';
-      card.setAttribute('role', 'status');
-      card.setAttribute('aria-live', 'polite');
-      card.setAttribute('aria-label', 'Speech in progress');
+      // Visual only: #interim-live is the single announcement source.
+      card.setAttribute('aria-hidden', 'true');
       card.style.setProperty('--speaker-color', profile.color);
 
       const textEl = document.createElement('span');
@@ -4214,11 +4258,21 @@ function initControls() {
   }
 
   const btnPrivacyDismiss = document.getElementById('btn-privacy-dismiss');
+  const btnPrivacyInfo = document.getElementById('btn-privacy-info');
   if (btnPrivacyDismiss) {
     btnPrivacyDismiss.addEventListener('click', () => {
       const notice = document.getElementById('privacy-notice');
       if (notice) notice.classList.add('hidden');
       localStorage.setItem('echolocate-privacy-dismissed', '1');
+      if (btnPrivacyInfo) btnPrivacyInfo.focus();
+    });
+  }
+  if (btnPrivacyInfo) {
+    btnPrivacyInfo.addEventListener('click', () => {
+      const notice = document.getElementById('privacy-notice');
+      if (!notice) return;
+      notice.classList.remove('hidden');
+      if (btnPrivacyDismiss) btnPrivacyDismiss.focus();
     });
   }
 }
