@@ -25,7 +25,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 - **#61** — SpeechAdapter contract and capability snapshot.
 - **#62** — model manifest, consent manager and consent UI.
 - **CSP** — meta policy, external theme bootstrap, hashed import map and tests.
-- **Translation consent** — per-pair consent before Chrome's model download.
+- **Translation consent** — per-pair consent before Chrome's model download (PR #64).
 
 ## Current constraints that affect the plan
 

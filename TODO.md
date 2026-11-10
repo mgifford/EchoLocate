@@ -40,9 +40,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
-- **Translation model consent** (this PR): per-pair consent before Chrome
+- **Translation model consent** (PR #64): per-pair consent before Chrome
   downloads a translation model, with a disclosure dialog and no captions
-  blocked when consent is refused.
+  blocked when consent is refused. See
+  <https://github.com/mgifford/EchoLocate/pull/64>.
 - **Content Security Policy** (PR #63): meta CSP with a hashed import map,
   external theme bootstrap, no eval/inline scripts, local-only connect-src,
   plus regression tests. See <https://github.com/mgifford/EchoLocate/pull/63>.
