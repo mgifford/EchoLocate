@@ -20,7 +20,8 @@
 
   --text-primary: #f1f3f5;
   --text-muted:   #868e96;
-  --text-interim: rgba(241, 243, 245, 0.45);
+  --text-interim: rgba(241, 243, 245, 0.72);  /* was 0.45 — 4.05:1 → now ~9:1 against near-black (WCAG AA) */
+  --warning-text: #ffd43b;                    /* text-only amber; --warning stays for borders/dots */
 
   --warning:      #ffd43b;
   --danger:       #ff6b6b;
@@ -84,7 +85,8 @@
   --status-dot-idle:    #ced4da;
   --text-primary:       #1a1a2e;
   --text-muted:         #5c6370;
-  --text-interim:       rgba(26, 26, 46, 0.5);
+  --text-interim:       rgba(26, 26, 46, 0.78);  /* 3.05:1 → ~9:1 against #f0f2f5 (WCAG AA) */
+  --warning-text:       #7a4a00;                 /* 3.02:1 (#e67600) → 7.5:1 against white */
   --mic-info-col:       #767676;  /* was #888888 — 3.56:1 → now 4.5:1 against #ffffff (WCAG AA) */
   --autosave-col:       #2f6b2f;  /* 5.9:1 against #ffffff — already passing */
   --scrollbar-thumb:    #ced4da;
@@ -216,7 +218,7 @@ body {
 }
 
 .speech-modal-title.info {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .speech-modal-close {
@@ -604,7 +606,7 @@ body {
 
 .lane-language.shifted {
   border-color: var(--warning);
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .lane-translation-controls {
@@ -980,7 +982,7 @@ body {
 .translation-selection-note {
   margin: 0.4rem 0 0;
   font-size: 0.68rem;
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .translation-help {
@@ -1028,7 +1030,7 @@ body {
 }
 
 /* Slightly brighter while actively speaking */
-.interim-text.speaking { color: rgba(241, 243, 245, 0.65); }
+.interim-text.speaking { color: var(--text-primary); }
 
 /* ─── Inline interim (live) card ────────────────────────────────────────────
    Shown inside the active speaker's lane while speech is in progress.
@@ -1065,7 +1067,7 @@ body {
   flex-shrink: 0;
   max-width: 45%;
   font-size: 0.72rem;
-  color: var(--warning);
+  color: var(--warning-text);
   border: 1px solid rgba(255, 212, 59, 0.45);
   border-radius: 999px;
   padding: 0.22rem 0.55rem;
@@ -1075,7 +1077,7 @@ body {
 }
 
 [data-theme="light"] .lang-mismatch-hint {
-  color: #ad6700;
+  color: var(--warning-text);
   border-color: rgba(230, 118, 0, 0.5);
   background: rgba(255, 243, 191, 0.7);
 }
@@ -1287,6 +1289,11 @@ body {
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
+}
+
+[data-theme="light"] .footer-community a {
+  /* --accent-a (#4dabf7) is 2.5:1 on white; use the darker focus blue. */
+  color: #1f6fd1;
 }
 
 .footer-community a {
@@ -1610,6 +1617,19 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--speaker-color, #4dabf7);
+}
+
+/*
+  The speaker palette was chosen for dark backgrounds.  In light mode the same
+  hues are 1.4–3.3:1 on white, so text that uses --speaker-color is darkened by
+  mixing it into near-black.  At 42% the lightest palette colour (#ffd43b)
+  still measures ~6.0:1 on #ffffff; the dotted lane marker and card border keep
+  the undarkened hue.  The plain colour is the fallback for engines without
+  color-mix().
+*/
+[data-theme="light"] .chat-speaker {
+  color: #1a1a2e;
+  color: color-mix(in srgb, var(--speaker-color, #4dabf7) 42%, #101018);
 }
 
 .chat-bubble {

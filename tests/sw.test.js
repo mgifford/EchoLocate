@@ -358,6 +358,27 @@ describe('buildCardHTML', () => {
     assert.ok(html.includes('match uncertain'));
   });
 
+  it('shows "speaker unknown" for the unknown attribution level', () => {
+    const html = buildCardHTML(makeCard({ profileMatchLevel: 'unknown' }));
+    assert.ok(html.includes('speaker unknown'));
+  });
+
+  it('keeps the unknown speaker id instead of rewriting it to s1', () => {
+    const html = buildCardHTML(makeCard({ speakerId: 'unknown', speakerLabel: 'Unknown voice' }));
+    assert.ok(html.includes('data-speaker-id="unknown"'));
+    assert.ok(html.includes('Unknown voice'));
+  });
+
+  it('emits a data-segment-id hook for late translation patches', () => {
+    const html = buildCardHTML(makeCard({ segmentId: 'seg-42' }));
+    assert.ok(html.includes('data-segment-id="seg-42"'));
+  });
+
+  it('omits data-segment-id for a malformed segment id', () => {
+    const html = buildCardHTML(makeCard({ segmentId: 'seg-1" onmouseover="x' }));
+    assert.ok(!html.includes('data-segment-id'));
+  });
+
   it('shows no annotation for high profileMatchLevel', () => {
     const html = buildCardHTML(makeCard({ profileMatchLevel: 'high' }));
     assert.ok(!html.includes('new cluster?'));
@@ -451,6 +472,21 @@ describe('buildChatMsgHTML', () => {
     const html = buildChatMsgHTML(makeChatCard({ profileMatchLevel: 'high' }));
     assert.ok(!html.includes('new voice?'));
     assert.ok(!html.includes('match uncertain'));
+  });
+
+  it('shows "speaker unknown" for the unknown attribution level', () => {
+    const html = buildChatMsgHTML(makeChatCard({ profileMatchLevel: 'unknown' }));
+    assert.ok(html.includes('speaker unknown'));
+  });
+
+  it('keeps the unknown speaker id instead of rewriting it to s1', () => {
+    const html = buildChatMsgHTML(makeChatCard({ speakerId: 'unknown', speakerLabel: 'Unknown voice' }));
+    assert.ok(html.includes('data-speaker-id="unknown"'));
+  });
+
+  it('emits a data-segment-id hook for late translation patches', () => {
+    const html = buildChatMsgHTML(makeChatCard({ segmentId: 'seg-9' }));
+    assert.ok(html.includes('data-segment-id="seg-9"'));
   });
 
   it('renders computer source badge', () => {

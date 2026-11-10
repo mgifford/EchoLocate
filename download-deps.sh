@@ -14,6 +14,11 @@ set -euo pipefail
 HTMX_VERSION="2.0.4"
 MEYDA_VERSION="5.6.3"
 FRANC_VERSION="6.2.0"
+# franc-min imports these by bare specifier.  index.html maps them to the
+# vendored copies below; keep versions and the import map in sync.
+TRIGRAM_UTILS_VERSION="2.0.1"
+N_GRAM_VERSION="2.0.0"
+COLLAPSE_WHITE_SPACE_VERSION="2.0.0"
 
 mkdir -p vendor/franc-min
 
@@ -38,8 +43,24 @@ curl -fsSL \
   "https://cdn.jsdelivr.net/npm/franc-min@${FRANC_VERSION}/data.js" \
   -o vendor/franc-min/data.js
 
+echo "Downloading franc's module dependencies (offline import-map targets)..."
+for spec in \
+  "trigram-utils@${TRIGRAM_UTILS_VERSION}" \
+  "n-gram@${N_GRAM_VERSION}" \
+  "collapse-white-space@${COLLAPSE_WHITE_SPACE_VERSION}"; do
+  name="${spec%@*}"
+  version="${spec##*@}"
+  mkdir -p "vendor/${name}"
+  echo "  ${name}@${version}"
+  curl -fsSL "https://cdn.jsdelivr.net/npm/${name}@${version}/index.js" \
+    -o "vendor/${name}/index.js"
+  curl -fsSL "https://cdn.jsdelivr.net/npm/${name}@${version}/license" \
+    -o "vendor/${name}/license"
+done
+
 echo ""
 echo "Done. vendor/ contents:"
-du -sh vendor/htmx.min.js vendor/meyda.min.js vendor/franc-min/
+du -sh vendor/htmx.min.js vendor/meyda.min.js vendor/franc-min/ \
+  vendor/trigram-utils/ vendor/n-gram/ vendor/collapse-white-space/
 echo ""
 echo "Now start the app with:  python3 server.py"

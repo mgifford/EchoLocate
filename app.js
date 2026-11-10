@@ -16,7 +16,13 @@ const CFG = Object.freeze({
   RESTART_DELAY:      150,
   SIGNATURE_MATCH_SIMILARITY: 0.85,
   SIGNATURE_HIGH_SIMILARITY:  0.93,
-  SIGNATURE_MED_SIMILARITY:   0.88,
+  // Speakers that cannot be matched with enough evidence are attributed to a
+  // single session-local "Unknown voice" lane instead of being forced into an
+  // existing profile.  The unknown lane is NOT a speaker profile: it is not
+  // counted against MAX_SPEAKERS and never enrolls a voice signature.
+  UNKNOWN_SPEAKER_ID:    'unknown',
+  UNKNOWN_SPEAKER_LABEL: 'Unknown voice',
+  UNKNOWN_SPEAKER_COLOR: '#8a9097',
   HYSTERESIS_LOCK_MS:         400,
   HYSTERESIS_MARGIN:          0.06,
   MATCH_HISTORY_SIZE:         3,
@@ -278,10 +284,12 @@ const State = {
   sampleTimer:               null,
   visualizer:                null,
   profiles:                  [], // [{id,label,color,lastSpokenAt,avgPitch,tone,el,cardsEl,count}]
+  unknownProfile:            null, // session-local "Unknown voice" lane (not a speaker profile)
   activeSpeakerId:           null,
   speakerLock:               null,
   matchHistory:              [],
   nextSpeakerNum:            1,
+  nextSegmentNum:            1,
   micDiagnostics:            null,
   stereoEnabled:             false,
   stereoAnalyserL:           null,
@@ -1303,18 +1311,27 @@ function refreshMergeControls() {
   if (!fromSel || !intoSel || !btn) return;
 
   const options = State.profiles.map((p) => ({ id: p.id, label: p.label }));
-  fromSel.innerHTML = options.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
-  intoSel.innerHTML = options.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
-
-  if (options.length >= 2) {
-    fromSel.value = options[1]?.id || options[0].id;
-    intoSel.value = options[0].id;
+  const targetOptions = options.slice();
+  // The Unknown lane can be merged INTO a real speaker, but it is not offered
+  // as a merge target (that would silently un-label a known speaker).
+  if (State.unknownProfile) {
+    options.push({ id: CFG.UNKNOWN_SPEAKER_ID, label: CFG.UNKNOWN_SPEAKER_LABEL });
   }
-  btn.disabled = options.length < 2;
 
-  // Reveal merge controls only once two or more speaker profiles exist.
+  fromSel.innerHTML = options.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
+  intoSel.innerHTML = targetOptions.map((o) => `<option value="${escapeHTML(o.id)}">${escapeHTML(o.label)}</option>`).join('');
+
+  if (options.length >= 2 && targetOptions.length >= 1) {
+    fromSel.value = State.unknownProfile
+      ? CFG.UNKNOWN_SPEAKER_ID
+      : (options[1]?.id || options[0].id);
+    intoSel.value = targetOptions[0].id;
+  }
+  btn.disabled = options.length < 2 || targetOptions.length < 1;
+
+  // Reveal merge controls only once there is something to merge.
   if (wrapper) {
-    if (options.length >= 2) {
+    if (options.length >= 2 && targetOptions.length >= 1) {
       wrapper.removeAttribute('hidden');
     } else {
       wrapper.setAttribute('hidden', '');
@@ -1344,6 +1361,7 @@ async function mergeProfiles(fromId, intoId) {
   const chatFeed = document.getElementById('chat-feed');
   if (chatFeed) chatFeed.innerHTML = '';
   State.profiles = [];
+  State.unknownProfile = null;
   State.matchHistory = [];
   State.speakerLock = null;
   State.activeSpeakerId = null;
@@ -1523,21 +1541,17 @@ async function initLanguageSelector() {
 }
 
 async function initLanguageDetection() {
-  // Try vendored copy first (works fully offline), then CDN, then heuristic fallback.
-  const sources = [
-    './vendor/franc-min/index.js',
-    'https://esm.sh/franc-min@6.2.0',
-  ];
-  for (const src of sources) {
-    try {
-      const mod = await import(src);
-      if (typeof mod.franc === 'function') {
-        State.languageDetector = mod.franc;
-        return;
-      }
-    } catch {
-      // try next source
+  // Vendored franc only — boot must never contact a third-party CDN.  If the
+  // module cannot load (for example an older browser without import-map
+  // support), detection falls back to heuristicLangFromText().
+  try {
+    const mod = await import('./vendor/franc-min/index.js');
+    if (typeof mod.franc === 'function') {
+      State.languageDetector = mod.franc;
+      return;
     }
+  } catch (err) {
+    console.warn('[EchoLocate] Vendored language detection unavailable — using heuristics:', err.message);
   }
   State.languageDetector = null;
 }
@@ -1748,7 +1762,32 @@ function updateDebugUI() {
 }
 
 function profileById(id) {
+  if (id === CFG.UNKNOWN_SPEAKER_ID) return State.unknownProfile;
   return State.profiles.find((p) => p.id === id) || null;
+}
+
+/**
+ * Return the session-local "Unknown voice" lane, creating it on first use.
+ * This lane holds captions whose speaker could not be established with enough
+ * evidence (speaker cap reached, or no usable voice signature).  It is
+ * deliberately not part of State.profiles: it must never consume a speaker
+ * slot, and ambiguous audio must never be enrolled into a profile.
+ */
+function unknownProfile() {
+  if (!State.unknownProfile) {
+    const profile = new VoiceProfile({
+      id: CFG.UNKNOWN_SPEAKER_ID,
+      label: CFG.UNKNOWN_SPEAKER_LABEL,
+      color: CFG.UNKNOWN_SPEAKER_COLOR,
+      pitch: 0,
+      tone: 'mid',
+    });
+    profile.isUnknown = true;
+    profile.matchLevel = 'unknown';
+    State.unknownProfile = profile;
+    ensureLane(profile);
+  }
+  return State.unknownProfile;
 }
 
 function translationCodeLabel(code) {
@@ -1876,7 +1915,7 @@ function buildLane(profile) {
       </span>
       <span class="lane-trans-summary" id="lane-${profile.id}-trans-summary"></span>
     </span>
-    <span class="lane-hint">${escapeHTML(laneHintFromTone(profile.tone))}</span>
+    <span class="lane-hint">${escapeHTML(profile.isUnknown ? 'Voice not matched — merge into a speaker' : laneHintFromTone(profile.tone))}</span>
   `;
 
   const cards = document.createElement('div');
@@ -1902,8 +1941,8 @@ function touchProfile(profile, now) {
   profile.lastSpokenAt = now;
   State.activeSpeakerId = profile.id;
 
-  for (const p of State.profiles) {
-    if (!p.el) continue;
+  for (const p of [...State.profiles, State.unknownProfile]) {
+    if (!p || !p.el) continue;
     p.el.classList.toggle('active', p.id === profile.id);
   }
 
@@ -1924,6 +1963,7 @@ class VoiceProfile {
     this.matchLevel = 'medium';
     this.signature = null;
     this.signatureStats = null;
+    this.isUnknown = false;
   }
 }
 
@@ -1940,8 +1980,10 @@ function newProfile(pitch, tone) {
 }
 
 function confidenceFromSimilarity(similarity) {
+  // Only profiles that passed SIGNATURE_MATCH_SIMILARITY are ever labelled
+  // here, so "low" means "new profile", not "matched but unsure".
   if (similarity >= CFG.SIGNATURE_HIGH_SIMILARITY) return 'high';
-  if (similarity >= CFG.SIGNATURE_MED_SIMILARITY) return 'medium';
+  if (similarity >= CFG.SIGNATURE_MATCH_SIMILARITY) return 'medium';
   return 'low';
 }
 
@@ -1995,6 +2037,15 @@ function resolveSpeakerProfile(metrics) {
     return { profile: only, matchRatio: 1, confidenceLevel: 'medium', createdNew: false };
   }
 
+  // No usable voice signature for this utterance (for example the recognizer
+  // finalized before any analysis frame was available).  We cannot compare
+  // voices, so the honest attribution is Unknown — never a fresh profile
+  // invented from missing evidence.
+  if (!signature && State.profiles.length) {
+    console.warn('[EchoLocate] No voice signature for this utterance — attributing to Unknown voice');
+    return { profile: unknownProfile(), matchRatio: 0, confidenceLevel: 'unknown', createdNew: false, unknown: true };
+  }
+
   const scored = [];
   for (const p of State.profiles) {
     const similarity = (signature && p.signature)
@@ -2020,8 +2071,14 @@ function resolveSpeakerProfile(metrics) {
   if (State.matchHistory.length > CFG.MATCH_HISTORY_SIZE) State.matchHistory.shift();
   const smoothed = smoothMatch(State.matchHistory);
   if (smoothed) {
-    best = smoothed.profile;
-    bestSimilarity = smoothed.similarity;
+    // Smoothing may only choose WHICH profile to compare against.  The accept
+    // decision must use this utterance's own similarity, not a value recalled
+    // from up to MATCH_HISTORY_SIZE utterances ago.
+    const current = scored.find((s) => s.profile.id === smoothed.profile.id);
+    if (current) {
+      best = current.profile;
+      bestSimilarity = current.similarity;
+    }
   }
 
   // Log assignment scores to aid debugging of speaker-detection issues.
@@ -2030,8 +2087,9 @@ function resolveSpeakerProfile(metrics) {
     console.log(`[EchoLocate] Speaker scores [${scoreStr}] → ${best ? best.id : 'none'} (${bestSimilarity.toFixed(3)}, threshold ${CFG.SIGNATURE_MATCH_SIMILARITY})`);
   }
 
-  const shouldAttach = best && (bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY || State.profiles.length >= State.maxSpeakers);
-  if (shouldAttach) {
+  // Attach only when this utterance itself is similar enough to the chosen
+  // profile.  Reaching the speaker cap is NOT evidence of identity.
+  if (best && bestSimilarity >= CFG.SIGNATURE_MATCH_SIMILARITY) {
     best.avgPitch = best.avgPitch * 0.7 + pitch * 0.3;
     best.tone = tone;
     if (signature) {
@@ -2071,6 +2129,16 @@ function resolveSpeakerProfile(metrics) {
       }
     }
     return { profile: best, matchRatio: bestSimilarity, confidenceLevel: best.matchLevel, createdNew: false };
+  }
+
+  // At the cap we must not force an unmatched voice into a known profile.
+  // Keep the caption, attribute it to Unknown, and let the user merge it.
+  if (State.profiles.length >= State.maxSpeakers) {
+    console.info(
+      `[EchoLocate] Speaker cap reached (${State.profiles.length}/${State.maxSpeakers}) and best similarity ` +
+      `${bestSimilarity.toFixed(3)} < ${CFG.SIGNATURE_MATCH_SIMILARITY} — attributing to Unknown voice`,
+    );
+    return { profile: unknownProfile(), matchRatio: bestSimilarity, confidenceLevel: 'unknown', createdNew: false, unknown: true };
   }
 
   console.log(`[EchoLocate] New speaker profile created (best similarity ${bestSimilarity.toFixed(3)} < threshold ${CFG.SIGNATURE_MATCH_SIMILARITY}, profiles so far: ${State.profiles.length + 1}/${State.maxSpeakers})`);
@@ -2193,6 +2261,7 @@ async function postCard(cardData) {
       target,
       swap: 'beforeend',
       values: {
+        segmentId: cardData.segmentId || '',
         text: cardData.text,
         speakerId: cardData.speakerId,
         speakerLabel: cardData.speakerLabel,
@@ -2225,6 +2294,7 @@ async function postChatMsg(cardData) {
     target: '#chat-feed',
     swap: 'beforeend',
     values: {
+      segmentId:         cardData.segmentId || '',
       text:              cardData.text,
       speakerId:         cardData.speakerId,
       speakerLabel:      cardData.speakerLabel,
@@ -2334,6 +2404,12 @@ const TranscriptCtrl = {
     State.currentUtteranceStartedAt = null;
 
     const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance, micEnergy, sysEnergy, audioSource } = flushUtteranceMetrics();
+
+    // Restart sampling immediately: this utterance's metrics are already
+    // captured, and waiting for rendering or translation would silently drop
+    // the first samples of the next speaker.
+    if (State.isRunning) startPitchSampling();
+
     const match = resolveSpeakerProfile({ centroid, tone, signature, signatureStats });
     const profile = match.profile;
     profile.count += 1;
@@ -2347,7 +2423,11 @@ const TranscriptCtrl = {
 
     touchProfile(profile, now);
 
+    const segmentId = `seg-${State.nextSegmentNum}`;
+    State.nextSegmentNum += 1;
+
     const cardData = {
+      segmentId,
       text,
       speakerId: profile.id,
       speakerLabel: profile.label,
@@ -2359,7 +2439,9 @@ const TranscriptCtrl = {
       endedAt: now,
       pitch: centroid,
       languageTag: detectedLang,
-      clusterDescriptor: profile.signatureStats ? signatureDescriptor(profile.signatureStats) : laneHintFromTone(tone),
+      clusterDescriptor: profile.isUnknown
+        ? 'Voice not matched'
+        : (profile.signatureStats ? signatureDescriptor(profile.signatureStats) : laneHintFromTone(tone)),
       profileMatchRatio: match.matchRatio,
       profileMatchLevel: match.confidenceLevel,
       stereoBalance: balance,
@@ -2368,6 +2450,9 @@ const TranscriptCtrl = {
       audioSource,
       micEnergy,
       sysEnergy,
+      translations: [],
+      translatedText: '',
+      translationLang: '',
     };
 
     pushDebugPoint({
@@ -2385,25 +2470,85 @@ const TranscriptCtrl = {
 
     this.clearInterim();
 
-    const sourceLang = detectedLang || State.recognitionLang || 'en';
-    const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
-    const translations = (State.translationEnabled && State.translationCapability === 'supported')
-      ? await Translation.translateToTargets(text, sourceLang, effectiveTargets)
-      : [];
-
-    cardData.translations = translations;
-    cardData.translatedText = translations[0]?.text || '';
-    cardData.translationLang = translations[0]?.lang || '';
-
+    // Captions render before any optional translation work.  Translation is a
+    // progressive enhancement: it must never delay the caption, its storage, or
+    // the next utterance (Chrome may download a translation model on first use).
     await postCard(cardData);
-    await postChatMsg(cardData);
+    try {
+      await postChatMsg(cardData);
+    } catch (err) {
+      console.warn('[EchoLocate] Chat message render failed — card was still saved:', err.message);
+    }
     Storage.save(cardData);
     updateCardCount();
     updateEmptyStage();
 
-    startPitchSampling();
+    if (State.translationEnabled && State.translationCapability === 'supported') {
+      const sourceLang = detectedLang || State.recognitionLang || 'en';
+      const effectiveTargets = getEffectiveTranslationTargetsForProfile(profile);
+      this._translateAfterRender(cardData, sourceLang, effectiveTargets);
+    }
+  },
+
+  // Translate a finalized caption in the background and patch the already
+  // rendered nodes + the stored card when the translation arrives.
+  _translateAfterRender(cardData, sourceLang, targets) {
+    if (!targets.length) return;
+    Translation.translateToTargets(cardData.text, sourceLang, targets)
+      .then((translations) => {
+        if (!translations.length) return;
+        const updated = withTranslations(cardData, translations);
+        const cards = Storage.allCards().map((card) => (
+          card.segmentId === updated.segmentId ? { ...card, ...updated } : card
+        ));
+        Storage.replaceAll(cards);
+        renderCardTranslations(updated);
+      })
+      .catch((err) => {
+        console.warn('[EchoLocate] Translation failed — caption unaffected:', err.message);
+      });
   },
 };
+
+/** Return a copy of a caption card with translation fields applied. */
+function withTranslations(card, translations) {
+  const list = Array.isArray(translations) ? translations.filter(Boolean) : [];
+  return {
+    ...card,
+    translations: list,
+    translatedText: list[0] ? list[0].text : '',
+    translationLang: list[0] ? list[0].lang : '',
+  };
+}
+
+/**
+ * Append translation blocks to the card and chat message already rendered for
+ * this segment.  Uses DOM text nodes (never innerHTML) and is idempotent.
+ */
+function renderCardTranslations(card) {
+  if (!card || !card.segmentId || !Array.isArray(card.translations) || !card.translations.length) return;
+  const host = `[data-segment-id="${card.segmentId}"]`;
+  for (const node of document.querySelectorAll(host)) {
+    node.querySelectorAll('.translation-text').forEach((el) => el.remove());
+    const anchor = node.querySelector('.confidence-meter');
+    for (const { lang, text } of card.translations) {
+      const block = document.createElement('span');
+      block.className = 'translation-text';
+      if (lang) block.setAttribute('lang', lang);
+      block.setAttribute('aria-label', 'Translation');
+      if (lang) {
+        const tag = document.createElement('span');
+        tag.className = 'translation-lang-tag';
+        tag.setAttribute('aria-hidden', 'true');
+        tag.textContent = String(lang).toUpperCase();
+        block.appendChild(tag);
+      }
+      block.appendChild(document.createTextNode(String(text)));
+      if (anchor) anchor.before(block);
+      else node.appendChild(block);
+    }
+  }
+}
 
 // ── On-screen debug console ──────────────────────────────────────────────────
 // Intercepts console.error / console.warn and [EchoLocate]-prefixed console.log
@@ -2791,6 +2936,7 @@ const SpeechEngine = {
       if (event.error === 'not-allowed') {
         setStatus('error', 'Mic access blocked');
         State.isRunning = false;
+        syncTransportState();
         return;
       }
       if (event.error === 'network') {
@@ -2799,6 +2945,7 @@ const SpeechEngine = {
           console.warn('[EchoLocate] Network error while offline — suspending recognition until connection returns');
           setStatus('error', 'Offline — will resume when connection returns');
           State.isRunning = false;
+          syncTransportState();
           if (!this._offlineHandler) {
             this._offlineHandler = () => {
               // Clear handler reference before starting to prevent duplicate registration
@@ -2848,6 +2995,7 @@ const SpeechEngine = {
           }
           setStatus('error', msg);
           State.isRunning = false;
+          syncTransportState();
           return;
         }
         this._networkRetryDelay = Math.min(
@@ -3029,6 +3177,7 @@ const SpeechEngine = {
         }
         TranscriptCtrl.clearInterim();
         updateEmptyStage();
+        syncTransportState();
       }
     };
 
@@ -3066,6 +3215,9 @@ const SpeechEngine = {
   },
 
   _rawStart() {
+    // A delayed retry (setTimeout) or the offline handler may fire after the
+    // user pressed Stop.  Never start a recognizer session the user cancelled.
+    if (!State.isRunning) return;
     // Re-create the SpeechRecognition object before each retry after a network
     // error, a quick fail, or after persistent no-result failures.  Edge (and
     // some other Chromium builds) can enter a broken state after a failed
@@ -3136,8 +3288,15 @@ const SpeechEngine = {
         State.isRunning = false;
         State.captionsOnly = false;
         updateEmptyStage();
+        syncTransportState();
         return;
       }
+    }
+
+    // The user may have pressed Stop while the microphone prompt was open.
+    if (!State.isRunning) {
+      syncTransportState();
+      return;
     }
 
     this._rawStart();
@@ -3559,7 +3718,17 @@ async function restoreSession() {
   }
 
   for (const card of cards) {
+    // Keep new segment ids unique across a restored session so late
+    // translation patches cannot target an older card with the same id.
+    const restoredSeg = /^seg-(\d+)$/.exec(String(card.segmentId || ''));
+    if (restoredSeg) {
+      State.nextSegmentNum = Math.max(State.nextSegmentNum, Number(restoredSeg[1]) + 1);
+    }
+
     let profile = profileById(card.speakerId);
+    if (!profile && card.speakerId === CFG.UNKNOWN_SPEAKER_ID) {
+      profile = unknownProfile();
+    }
     if (!profile) {
       profile = {
         id: card.speakerId || `s${State.nextSpeakerNum}`,
@@ -3585,6 +3754,7 @@ async function restoreSession() {
     profile.lastSpokenAt = card.endedAt || profile.lastSpokenAt;
 
     const normalized = {
+      segmentId: card.segmentId || '',
       text: card.text,
       speakerId: profile.id,
       speakerLabel: profile.label,
@@ -3608,7 +3778,11 @@ async function restoreSession() {
     };
 
     await postCard(normalized);
-    await postChatMsg(normalized);
+    try {
+      await postChatMsg(normalized);
+    } catch (err) {
+      console.warn('[EchoLocate] Restore: chat message render failed:', err.message);
+    }
   }
 
   updateCardCount();
@@ -3667,6 +3841,23 @@ function initNavOptions() {
   });
 }
 
+/**
+ * Pure mapping from transport state to button disabled flags.
+ * Kept separate from the DOM so it can be unit-tested.
+ */
+function transportButtonState(running) {
+  return { startDisabled: !!running, stopDisabled: !running };
+}
+
+/** Keep Start/Stop in sync with State.isRunning after any success or failure. */
+function syncTransportState() {
+  const { startDisabled, stopDisabled } = transportButtonState(State.isRunning);
+  const start = document.getElementById('btn-start');
+  const stop = document.getElementById('btn-stop');
+  if (start) start.disabled = startDisabled;
+  if (stop) stop.disabled = stopDisabled;
+}
+
 function initControls() {
   const btnStart = document.getElementById('btn-start');
   const btnStop = document.getElementById('btn-stop');
@@ -3685,13 +3876,18 @@ function initControls() {
   btnStart.addEventListener('click', async () => {
     btnStart.disabled = true;
     btnStop.disabled = false;
-    await SpeechEngine.start();
+    try {
+      await SpeechEngine.start();
+    } finally {
+      // start() can fail (mic denied, offline, unsupported) and return without
+      // running.  Always resync so the user is never stuck with a dead Start.
+      syncTransportState();
+    }
   });
 
   btnStop.addEventListener('click', () => {
-    btnStop.disabled = true;
-    btnStart.disabled = false;
     SpeechEngine.stop();
+    syncTransportState();
   });
 
   btnClear.addEventListener('click', () => {
@@ -3705,10 +3901,12 @@ function initControls() {
     TranscriptCtrl.clearInterim();
     Storage.clear();
     State.profiles = [];
+    State.unknownProfile = null;
     State.activeSpeakerId = null;
     State.speakerLock = null;
     State.matchHistory = [];
     State.nextSpeakerNum = 1;
+    State.nextSegmentNum = 1;
     State.speakerTranslationPrefs = {};
     persistSpeakerTranslationPrefs();
     State.debugPoints = [];

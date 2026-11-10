@@ -163,9 +163,10 @@ Benefit:
 
 Privacy posture:
 
-1. Audio remains local in browser
-2. Transcript content is not sent to external cloud APIs by default
-3. Processing and rendering happen on device
+1. Audio is captured in the browser; in Chrome/Edge the Web Speech API may send it to the browser
+   vendor's speech servers
+2. Transcript content is stored locally and is never uploaded by EchoLocate
+3. Rendering, persistence and language detection happen on device
 
 Offline posture:
 

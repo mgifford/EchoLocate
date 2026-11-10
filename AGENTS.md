@@ -17,7 +17,7 @@ Primary runtime pieces:
 - Maximum speaker profiles is capped at 6
 - Confidence context is attached per card in metadata (high/medium/low wording)
 - Session cards persist in localStorage and can be exported as VTT
-- Privacy notice explicitly states all processing remains in browser
+- Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
 - Light/dark theme toggle is persisted in localStorage
 
 ## Working Agreements For Agents And Contributors
@@ -57,13 +57,15 @@ To refresh vendored files (e.g., after a version bump in download-deps.sh):
 ./download-deps.sh
 ```
 
-Optional on-device language-id model (~14 MB, improves lang detection):
+Optional on-device language-id model assets (staged, not wired into the app yet):
 
 ```bash
-./download-models.sh       # downloads to vendor/transformers, vendor/onnx-runtime, models/language-id
+./download-models.sh       # stages vendor/transformers, vendor/onnx-runtime, models/language-id
 ```
 
-EchoLocate detects model files at startup; no code change required.
+`app.js` does **not** load these files yet — language detection currently uses the vendored
+`franc-min` module with a small heuristic fallback. Wire the ONNX model in (with consent and
+integrity checks) before claiming it is used.
 
 ### Local dev notes for agents
 - `vendor/` files are checked into git — do not gitignore them

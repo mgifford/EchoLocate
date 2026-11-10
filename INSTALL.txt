@@ -7,8 +7,9 @@ OPTION 1 — Use the live demo (nothing to install)
 
 Visit:  https://mgifford.github.io/EchoLocate/
 
-Works in Chrome or Edge on desktop.  All audio stays in your browser;
-nothing is sent to any server.
+Works in Chrome or Edge on desktop.  Captions stay in your browser and
+EchoLocate never uploads them.  Chrome and Edge use their vendor's speech
+service, which may process audio on that vendor's servers.
 
 
 -----------------------------------------------------------------------
