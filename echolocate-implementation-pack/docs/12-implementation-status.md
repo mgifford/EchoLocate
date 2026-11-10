@@ -23,7 +23,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
   privacy reopen, forced colors, bounded SW boot wait).
 - **#59** — storage honesty, serialized caption commits, SW 503/cache cleanup.
 - **#61** — SpeechAdapter contract and capability snapshot.
-- **Next PR** — model manifest, consent manager and consent UI.
+- **#62** — model manifest, consent manager and consent UI.
 
 ## Current constraints that affect the plan
 

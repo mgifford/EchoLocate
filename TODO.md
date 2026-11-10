@@ -40,9 +40,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
-- **Model consent infrastructure** (this PR): manifest, exact-revision
+- **Model consent infrastructure** (PR #62): manifest, exact-revision
   consent, SHA-256 verification, progress/cancel, storage refusal, Cache
-  Storage install/removal and a consent dialog. No model ships yet.
+  Storage install/removal and a consent dialog. No model ships yet. See
+  <https://github.com/mgifford/EchoLocate/pull/62>.
 - **Planning pack reconciliation** (PR #60): the pack is versioned at the
   repository root, its baseline matches the current app, its synthetic fixtures
   are confirmed present and referenced, contracts are annotated as
