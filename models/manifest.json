@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "deployable": true,
+  "notes": "No installable models in this build. Entries are added with the engine that consumes them; every artifact needs an exact size and SHA-256.",
+  "models": []
+}

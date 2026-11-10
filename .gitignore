@@ -30,6 +30,7 @@ venv/
 models/*
 !models/.gitkeep
 !models/README.md
+!models/manifest.json
 
 # Keep vendored runtime dependencies in git (do not ignore vendor/)
 # vendor/

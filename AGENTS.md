@@ -20,6 +20,7 @@ Primary runtime pieces:
 - Session cards persist in localStorage and can be exported as VTT; write failures and the 500-card trim are surfaced in the footer
 - Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
 - Capability probing (Web Speech, on-device status, WebGPU adapter, WASM, storage) is local-only and shown in Debug
+- Model installs require exact-revision consent and SHA-256 verification; `models/manifest.json` is empty until an engine ships
 - Light/dark theme toggle is persisted in localStorage
 
 ## Working Agreements For Agents And Contributors
@@ -73,7 +74,7 @@ integrity checks) before claiming it is used.
 
 ### Local dev notes for agents
 - `vendor/` files are checked into git — do not gitignore them
-- `models/` directory houses optional on-device model files; only `.gitkeep` is committed
+- `models/` houses the tracked `manifest.json`; downloaded artifacts are ignored and must never be committed
 - Mic access and service workers require a secure context; localhost qualifies without HTTPS
 - Use `python3 server.py` (not `open index.html`) because the service worker needs HTTP(S)
 

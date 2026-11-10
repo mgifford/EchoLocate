@@ -82,6 +82,20 @@
     </div>
   </dialog>
 
+  <!-- Local model consent — nothing is downloaded until this is accepted -->
+  <dialog id="model-consent-dialog" aria-labelledby="model-consent-title" aria-describedby="model-consent-body">
+    <div class="speech-modal-content">
+      <div class="speech-modal-header">
+        <h2 id="model-consent-title" class="speech-modal-title">Install a local model?</h2>
+      </div>
+      <div id="model-consent-body" class="speech-modal-body"></div>
+      <div class="speech-modal-footer">
+        <button id="model-consent-cancel" class="btn btn-secondary" type="button">Not now</button>
+        <button id="model-consent-approve" class="btn btn-primary" type="button">Install model</button>
+      </div>
+    </div>
+  </dialog>
+
   <header class="app-header" role="banner">
     <div class="header-inner">
 
@@ -203,6 +217,13 @@
             <option value="6">6</option>
           </select>
         </span>
+
+        <div class="model-controls" id="model-controls">
+          <span class="lang-picker-label">Local models</span>
+          <div id="model-list" class="model-list"></div>
+          <p id="model-status" class="translation-help" role="status" aria-live="polite">Checking local models…</p>
+          <button id="model-cancel" class="btn btn-secondary" type="button" hidden>Cancel download</button>
+        </div>
 
         <button id="btn-export" class="btn btn-secondary" aria-label="Save Chat as a VTT file">Save Chat</button>
         <button id="btn-copy-chat" class="btn btn-secondary" aria-label="Copy Chat to clipboard">Copy Chat</button>
@@ -351,6 +372,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-5"></script>
+  <script src="app.js?v=20261110-6"></script>
 </body>
 </html>

@@ -2,10 +2,11 @@
 
 This is a **planning and experimental package**, not a completed implementation or a verified benchmark. It is intended to be copied into or reviewed against [mgifford/EchoLocate](https://github.com/mgifford/EchoLocate) on a feature branch.
 
-> **Status 2026-11-10:** reconciled with the repository after PRs #55, #57, #58
-> and #59. See `docs/12-implementation-status.md` for what is shipped, partial or
-> still planned. The package is now versioned in the repository so future agents
-> do not repeat stale baseline work.
+> **Status 2026-11-10:** reconciled with the repository after PRs #55, #57, #58,
+> #59 and #61, plus the model consent infrastructure. See
+> `docs/12-implementation-status.md` for what is shipped, partial or still
+> planned. The package is versioned in the repository so future agents do not
+> repeat stale baseline work.
 
 ## Goals
 

@@ -40,6 +40,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
+- **Model consent infrastructure** (PR #62): manifest, exact-revision
+  consent, SHA-256 verification, progress/cancel, storage refusal, Cache
+  Storage install/removal and a consent dialog. No model ships yet. See
+  <https://github.com/mgifford/EchoLocate/pull/62>.
 - **Planning pack reconciliation** (PR #60): the pack is versioned at the
   repository root, its baseline matches the current app, its synthetic fixtures
   are confirmed present and referenced, contracts are annotated as
@@ -141,14 +145,16 @@ impossible.
 Acceptance: an implementing agent can follow the pack without inventing
 history, and no reference points at a file that does not exist.
 
+### N5. First installable model and consent inventory
+
+- [ ] Add the whisper-base manifest entry with the WebGPU engine (PR 3), with
+      pinned revision, exact sizes and SHA-256.
+- [ ] Put the existing Chrome Translator download into the consent inventory
+      so "no downloads until consent" covers browser-managed models too.
+- [ ] Test cache eviction and reinstall on a real device.
+
 ## Later (parked — do not start yet)
 
-- [ ] **ModelManager + consent.** Pinned manifest, license/size/source/revision,
-      separate consent per model, progress/cancel/retry, SHA-256 verification,
-      cache by immutable revision, per-model delete, quota/eviction recovery,
-      no service-worker pre-caching. Include the existing Chrome Translator
-      download in the inventory so "no downloads until consent" is scoped to
-      app-managed weights.
 - [ ] **WebGPU ASR experiment.** Start with `onnx-community/whisper-base`
       (Apache-2.0, ~146 MB fp16) and `whisper-tiny` (~76 MB) as the constrained
       fallback. Chunking, partials, timestamps; measure WER, caption p50/p95,

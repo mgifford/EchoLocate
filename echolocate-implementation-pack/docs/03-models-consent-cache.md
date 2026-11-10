@@ -1,12 +1,14 @@
 # Models, consent, caching and licensing
 
-> **Current status (2026-11-10):** no app-managed model downloads and no
-> `ModelManager` exist. The experimental `browser-local` engine asks the browser
-> to install a language pack via `SpeechRecognition.install()` only after a user
-> clicks the button. Optional translation uses Chrome's built-in Translator API,
-> which may download a small model when translation is enabled — include that in
-> the PR 2 consent inventory. The service worker deliberately refuses to cache
-> `models/`, `onnx-runtime/` and ONNX artifacts.
+> **Current status (2026-11-10):** a `ModelManager` and consent UI exist, but
+> `models/manifest.json` is empty — no app-managed weights ship yet. Installs
+> require approval for the exact revision and a SHA-256 match, can be cancelled,
+> and are stored in Cache Storage; removal revokes consent and never touches
+> transcripts. The experimental `browser-local` engine asks the browser to
+> install a language pack only after a user action. Optional translation uses
+> Chrome's built-in Translator API, which may download a small model — include
+> that in the consent inventory. The service worker refuses to cache `models/`,
+> `onnx-runtime/` and ONNX artifacts.
 
 ## Candidates (must independently verify current cards and terms)
 
