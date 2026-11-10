@@ -25,10 +25,11 @@ Related material:
 - **PR #57** (merged): experimental on-device speech engine, engine selector,
   availability/install flow. See
   <https://github.com/mgifford/EchoLocate/pull/57>.
-- **A11y semantics pass** (this PR): Label in Name, a single interim live
+- **A11y semantics pass** (PR #58): Label in Name, a single interim live
   region, non-modal translation popup with focus return, reopenable privacy
   notice, forced-colors fallbacks, modal dismissal-key fix, and a bounded
-  service-worker boot wait.
+  service-worker boot wait. See
+  <https://github.com/mgifford/EchoLocate/pull/58>.
 
 ## Next
 
