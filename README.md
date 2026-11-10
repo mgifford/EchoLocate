@@ -1,6 +1,6 @@
 # EchoLocate
 
-Live, private, in-browser captioning with simulated speaker grouping.
+Live, in-browser captioning with local transcripts and simulated speaker grouping.
 
 Try it now: [mgifford.github.io/EchoLocate](https://mgifford.github.io/EchoLocate/)
 
@@ -8,7 +8,7 @@ Try it now: [mgifford.github.io/EchoLocate](https://mgifford.github.io/EchoLocat
 
 EchoLocate is designed as an accessibility-first captioning tool, especially for deaf and hard-of-hearing users who need live, glanceable transcripts in meetings and conversations.
 
-The app runs fully client-side. Audio stays on-device. There is no backend speech pipeline.
+EchoLocate runs entirely in the browser: there is no backend service and no EchoLocate server. Speech recognition is supplied by your browser — in Chrome and Edge the browser may send audio to its vendor's speech service. Captions, speaker labels and saved cards are stored only in this browser.
 
 ## High-level architecture
 
@@ -96,10 +96,14 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 
 ## Privacy model
 
-1. Audio processing happens in-browser
-2. Transcript data is stored locally in browser storage
-3. No transcript/audio is sent to external cloud services by default
-4. Offline operation is supported because vendor assets are committed in-repo
+1. Transcripts, speaker labels and settings are stored in this browser only; EchoLocate never uploads them
+2. There is no EchoLocate backend — the Service Worker only renders local page fragments
+3. Speech recognition uses the browser's Web Speech API. In Chrome and Edge that can send audio to the
+   browser vendor's speech servers, under that vendor's terms. EchoLocate does not control that path
+4. Optional translation uses Chrome's built-in Translator API on device; Chrome may download a small
+   translation model on first use
+5. The interface, transcript, export and language detection work offline; browser speech recognition
+   requires a network connection in Chrome and Edge
 
 ## Run locally (offline-friendly)
 

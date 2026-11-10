@@ -16,6 +16,20 @@
       document.documentElement.setAttribute('data-theme', t);
     }());
   </script>
+  <!--
+    franc-min (vendored) imports two bare module specifiers. This import map
+    keeps language detection fully offline. Without it the vendored import
+    fails and the app silently falls back to its small text heuristics.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "trigram-utils": "./vendor/trigram-utils/index.js",
+        "n-gram": "./vendor/n-gram/index.js",
+        "collapse-white-space": "./vendor/collapse-white-space/index.js"
+      }
+    }
+  </script>
   <link rel="stylesheet" href="style.css" />
   <!--
     Vendored dependencies — served from vendor/ so the app works completely
@@ -27,14 +41,15 @@
 </head>
 <body>
 
-  <!-- Privacy notice — shown until dismissed; everything runs locally -->
+  <!-- Privacy notice — shown until dismissed; describes what is local and what is not -->
   <div id="privacy-notice" class="privacy-notice" role="note">
     <span class="privacy-icon" aria-hidden="true">🔒</span>
     <p class="privacy-text">
-      <strong>Your data stays on your device.</strong>
-      All audio is processed entirely in your browser.
-      Nothing is sent to GitHub, any server, or any third party.
-      No recordings leave this browser tab.
+      <strong>Your transcript stays in this browser.</strong>
+      Everything EchoLocate saves — captions, speaker labels and cards — is stored on this
+      device only, and nothing is sent to GitHub. Speech recognition is provided by your
+      browser: in Chrome and Edge that can send audio to the browser vendor's servers.
+      EchoLocate has no server of its own.
     </p>
     <button id="btn-privacy-dismiss" class="btn-privacy-dismiss" aria-label="Dismiss privacy notice">✕</button>
   </div>
@@ -328,6 +343,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20260629-11"></script>
+  <script src="app.js?v=20261110-1"></script>
 </body>
 </html>

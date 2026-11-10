@@ -44,8 +44,8 @@ hard-of-hearing users. Every design and writing decision must serve that purpose
 2. **Plain language.** If a 12-year-old cannot understand it, it is a barrier.
 3. **Inclusive by default.** See [ACCESSIBILITY.md](./ACCESSIBILITY.md) for all
    interaction and visual standards.
-4. **Privacy-first.** All audio and transcript processing stays in the browser.
-   Nothing is sent to a server or third-party cloud service.
+4. **Privacy-first.** EchoLocate adds no server and never uploads transcripts. Be explicit that the
+   browser's own speech service (Chrome/Edge) may process audio in the cloud.
 5. **Consistency is trust.** AI agents and humans must use the same tokens, patterns,
    and vocabulary.
 6. **Radically open.** Work transparently; share methods and findings openly.

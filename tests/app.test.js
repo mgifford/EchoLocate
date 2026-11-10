@@ -523,8 +523,8 @@ describe('laneHintFromTone', () => {
 
 describe('confidenceFromSimilarity', () => {
   const fn = ctx.confidenceFromSimilarity;
-  // CFG.SIGNATURE_HIGH_SIMILARITY = 0.93
-  // CFG.SIGNATURE_MED_SIMILARITY  = 0.88
+  // CFG.SIGNATURE_HIGH_SIMILARITY  = 0.93
+  // CFG.SIGNATURE_MATCH_SIMILARITY = 0.85 (anything accepted is at least "medium")
 
   it('returns "high" at or above 0.93', () => {
     assert.equal(fn(0.93), 'high');
@@ -532,14 +532,15 @@ describe('confidenceFromSimilarity', () => {
     assert.equal(fn(0.95), 'high');
   });
 
-  it('returns "medium" between 0.88 (inclusive) and 0.93 (exclusive)', () => {
+  it('returns "medium" between the match threshold (inclusive) and 0.93 (exclusive)', () => {
+    assert.equal(fn(0.85), 'medium');
     assert.equal(fn(0.88), 'medium');
     assert.equal(fn(0.90), 'medium');
     assert.equal(fn(0.929), 'medium');
   });
 
-  it('returns "low" below 0.88', () => {
-    assert.equal(fn(0.879), 'low');
+  it('returns "low" below the match threshold', () => {
+    assert.equal(fn(0.849), 'low');
     assert.equal(fn(0.5), 'low');
     assert.equal(fn(0), 'low');
   });
@@ -547,8 +548,8 @@ describe('confidenceFromSimilarity', () => {
   it('handles boundary values precisely', () => {
     assert.equal(fn(0.93), 'high');
     assert.equal(fn(0.93 - Number.EPSILON), 'medium');
-    assert.equal(fn(0.88), 'medium');
-    assert.equal(fn(0.88 - Number.EPSILON), 'low');
+    assert.equal(fn(0.85), 'medium');
+    assert.equal(fn(0.85 - Number.EPSILON), 'low');
   });
 });
 
@@ -1152,6 +1153,8 @@ describe('SpeechEngine quick restart', () => {
   it('recreates the recognizer after a quick-fail retry', () => {
     const initCallsBefore = vm.runInContext(`(() => {
       let initCalls = 0;
+      const wasRunning = State.isRunning;
+      State.isRunning = true; // _rawStart() refuses to start a cancelled session
       const originalInit = SpeechEngine.init;
       SpeechEngine.init = function () {
         initCalls++;
@@ -1163,6 +1166,7 @@ describe('SpeechEngine quick restart', () => {
       SpeechEngine._noResultCount = 0;
       SpeechEngine._rawStart();
       SpeechEngine.init = originalInit;
+      State.isRunning = wasRunning;
       return initCalls;
     })()`, ctx);
 
@@ -1235,3 +1239,193 @@ describe('parseBrowserName', () => {
   });
 });
 
+
+// ── transportButtonState ──────────────────────────────────────────────────────
+
+describe('transportButtonState', () => {
+  const fn = ctx.transportButtonState;
+
+  it('enables Start and disables Stop while idle', () => {
+    assert.deepEqual(fn(false), { startDisabled: false, stopDisabled: true });
+  });
+
+  it('disables Start and enables Stop while running', () => {
+    assert.deepEqual(fn(true), { startDisabled: true, stopDisabled: false });
+  });
+
+  it('coerces truthy/falsy values to booleans', () => {
+    assert.deepEqual(fn(1), { startDisabled: true, stopDisabled: false });
+    assert.deepEqual(fn(undefined), { startDisabled: false, stopDisabled: true });
+  });
+});
+
+// ── withTranslations ──────────────────────────────────────────────────────────
+
+describe('withTranslations', () => {
+  const fn = ctx.withTranslations;
+
+  it('returns a copy with translations and first-item convenience fields', () => {
+    const card = { segmentId: 'seg-1', text: 'Hello' };
+    const out = fn(card, [{ lang: 'fr', text: 'Bonjour' }, { lang: 'de', text: 'Hallo' }]);
+    assert.equal(out.segmentId, 'seg-1');
+    assert.equal(out.translatedText, 'Bonjour');
+    assert.equal(out.translationLang, 'fr');
+    assert.equal(out.translations.length, 2);
+  });
+
+  it('does not mutate the input card', () => {
+    const card = { segmentId: 'seg-1', translations: [] };
+    fn(card, [{ lang: 'fr', text: 'Bonjour' }]);
+    assert.deepEqual(card.translations, []);
+    assert.equal(card.translatedText, undefined);
+  });
+
+  it('defaults to empty fields for an empty list', () => {
+    const out = fn({ text: 'Hello' }, []);
+    assert.deepEqual(out.translations, []);
+    assert.equal(out.translatedText, '');
+    assert.equal(out.translationLang, '');
+  });
+
+  it('filters falsy translation entries', () => {
+    const out = fn({ text: 'Hello' }, [null, { lang: 'fr', text: 'Bonjour' }]);
+    assert.equal(out.translations.length, 1);
+  });
+});
+
+// ── resolveSpeakerProfile attribution ─────────────────────────────────────────
+// Uses a separate VM context with buildLane stubbed out (the resolver only
+// needs a lane handle, not real DOM nodes).
+
+describe('resolveSpeakerProfile attribution', () => {
+  const sctx = loadApp();
+
+  vm.runInContext(`
+    buildLane = function (profile) {
+      profile.el = { querySelector: () => null, classList: { toggle() {} } };
+      profile.cardsEl = { appendChild() {} };
+    };
+  `, sctx);
+
+  const SIG_A = [1, 0, 0, 0];
+  const SIG_B = [0, 1, 0, 0];
+
+  function reset(signatures) {
+    vm.runInContext(`
+      State.profiles = [];
+      State.unknownProfile = null;
+      State.matchHistory = [];
+      State.speakerLock = null;
+      State.captionsOnly = false;
+      State.maxSpeakers = 6;
+      State.nextSpeakerNum = ${signatures.length + 1};
+    `, sctx);
+    if (signatures.length) {
+      vm.runInContext(`
+        ${JSON.stringify(signatures)}.forEach((signature, index) => {
+          const p = new VoiceProfile({
+            id: 's' + (index + 1),
+            label: 'voice ' + (index + 1),
+            color: '#4dabf7',
+            pitch: 200,
+            tone: 'mid',
+          });
+          p.signature = signature;
+          p.signatureStats = { spectralCentroid: 200, spectralRolloff: 1, spectralFlatness: 0.1, spectralSlope: 0, zcr: 0.05, rms: 0.1 };
+          p.el = { querySelector: () => null, classList: { toggle() {} } };
+          p.cardsEl = { appendChild() {} };
+          State.profiles.push(p);
+        });
+      `, sctx);
+    }
+  }
+
+  function resolve(signature) {
+    return vm.runInContext(
+      `resolveSpeakerProfile({
+        centroid: 200,
+        tone: 'mid',
+        signature: ${JSON.stringify(signature)},
+        signatureStats: { spectralCentroid: 200, spectralRolloff: 1, spectralFlatness: 0.1, spectralSlope: 0, zcr: 0.05, rms: 0.1 }
+      })`,
+      sctx,
+    );
+  }
+
+  function state(expr) {
+    return vm.runInContext(expr, sctx);
+  }
+
+  it('creates the first speaker profile', () => {
+    reset([]);
+    const result = resolve(SIG_A);
+    assert.equal(result.createdNew, true);
+    assert.equal(result.profile.id, 's1');
+    assert.equal(state('State.profiles.length'), 1);
+  });
+
+  it('attaches a sufficiently similar voice to the best profile', () => {
+    reset([SIG_A]);
+    const result = resolve([1, 0, 0, 0]);
+    assert.equal(result.createdNew, false);
+    assert.equal(result.profile.id, 's1');
+    assert.equal(result.confidenceLevel, 'high');
+    assert.equal(state('State.profiles.length'), 1);
+  });
+
+  it('creates a new profile for a dissimilar voice while under the cap', () => {
+    reset([SIG_A]);
+    const result = resolve(SIG_B);
+    assert.equal(result.createdNew, true);
+    assert.equal(result.profile.id, 's2');
+    assert.equal(state('State.profiles.length'), 2);
+  });
+
+  it('attributes an unmatched voice to Unknown when the speaker cap is reached', () => {
+    reset([SIG_A, SIG_A, SIG_A, SIG_A, SIG_A, SIG_A]);
+    const result = resolve(SIG_B);
+    assert.equal(result.profile.id, 'unknown');
+    assert.equal(result.profile.isUnknown, true);
+    assert.equal(result.createdNew, false);
+    assert.equal(result.confidenceLevel, 'unknown');
+    assert.equal(state('State.profiles.length'), 6);
+  });
+
+  it('still matches a known voice normally at the cap', () => {
+    reset([SIG_A, SIG_A, SIG_A, SIG_A, SIG_A, SIG_A]);
+    const result = resolve([1, 0, 0, 0]);
+    assert.equal(result.profile.id, 's1');
+    assert.equal(result.profile.isUnknown, false);
+    assert.equal(state('State.profiles.length'), 6);
+  });
+
+  it('never enrolls an unmatched voice into an existing profile at the cap', () => {
+    reset([SIG_A, SIG_A, SIG_A, SIG_A, SIG_A, SIG_A]);
+    const before = state('JSON.stringify(State.profiles[0].signature)');
+    resolve(SIG_B);
+    resolve([0, 0, 1, 0]);
+    assert.equal(state('JSON.stringify(State.profiles[0].signature)'), before);
+    assert.equal(state('State.unknownProfile.signature'), null);
+    assert.equal(state('State.unknownProfile.signatureStats'), null);
+  });
+
+  it('routes a missing voice signature to Unknown instead of inventing a speaker', () => {
+    reset([SIG_A]);
+    const result = resolve(null);
+    assert.equal(result.profile.id, 'unknown');
+    assert.equal(result.createdNew, false);
+    assert.equal(state('State.profiles.length'), 1);
+  });
+
+  it('does not let match history smooth a weak match into an attach', () => {
+    reset([SIG_A, SIG_B]);
+    resolve([1, 0, 0, 0]); // strong match → s1 (recorded in history)
+    resolve([0, 1, 0, 0]); // strong match → s2 (recorded in history)
+    const result = resolve([0, 0, 1, 0]); // matches nothing
+    // Historical 1.0 scores must not authorise an attach; a third profile is
+    // created because the cap has not been reached.
+    assert.equal(result.createdNew, true);
+    assert.equal(result.profile.id, 's3');
+    assert.equal(state('State.profiles.length'), 3);
+  });
+});

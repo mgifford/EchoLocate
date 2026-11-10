@@ -1,7 +1,7 @@
 # ACCESSIBILITY.md
 
 ## Goal
-EchoLocate aims to provide readable, low-friction live captions for Deaf and hard-of-hearing users in real time, while keeping data local to the browser.
+EchoLocate aims to provide readable, low-friction live captions for Deaf and hard-of-hearing users in real time, while keeping the transcript and saved cards local to the browser.
 
 ## Standards Intent
 The project is designed to align with WCAG 2.2 AA principles where feasible in a pure client-side web app context.
@@ -29,11 +29,13 @@ The project is designed to align with WCAG 2.2 AA principles where feasible in a
 - Lower ASR confidence text gets additional visual marking
 
 ### Privacy And User Understanding
-- A persistent privacy notice explains local-only processing
-- Notice explicitly states that audio/transcript data is not sent to GitHub or third-party servers
+- A persistent privacy notice separates what stays local (captions, speaker labels, saved cards)
+  from what the browser's speech service may process remotely
+- Notice explicitly states that transcript data is not sent to GitHub or by EchoLocate, and that
+  Chrome/Edge speech recognition may send audio to the browser vendor's servers
 
 ## Current Known Limitations
-- Speech recognition depends on browser support for Web Speech API
+- Speech recognition depends on browser support for Web Speech API, and in Chrome/Edge it may use the browser vendor's cloud service
 - Speaker grouping is heuristic and can mis-assign utterances in edge cases
 - Confidence indicators are model/engine dependent and not calibrated per environment
 - Fully automated contrast audits are not yet part of CI
