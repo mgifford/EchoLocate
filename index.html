@@ -104,7 +104,7 @@
         <button id="btn-view-toggle"
           class="btn btn-secondary btn-view-toggle"
           type="button"
-          aria-label="Switch transcript layout"
+          aria-label="Layout: Chat — switch to lanes view"
           title="Switch transcript layout"
           aria-pressed="false">
           Layout: Chat
@@ -146,14 +146,13 @@
       <div class="nav-options-inner">
 
         <label class="lang-picker-label" for="lang-select">Language</label>
-        <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
+        <select id="lang-select" class="lang-select"></select>
 
         <span class="source-picker-wrapper">
           <label class="lang-picker-label" for="engine-select">Engine</label>
           <select id="engine-select" class="lang-select engine-select" aria-label="Speech recognition engine"></select>
         </span>
-        <button id="btn-install-langpack" class="btn btn-secondary" type="button" hidden
-                aria-label="Download on-device language pack">Download language pack</button>
+        <button id="btn-install-langpack" class="btn btn-secondary" type="button" hidden>Download language pack</button>
         <span id="engine-status" class="translation-status hidden" aria-live="polite"></span>
 
         <div class="translation-controls" id="translation-controls">
@@ -165,7 +164,6 @@
             <button id="translation-lang-btn"
                     class="btn btn-secondary translation-lang-btn"
                     type="button"
-                    aria-haspopup="true"
                     aria-expanded="false"
                     aria-controls="translation-lang-dropdown"
                     hidden>
@@ -176,7 +174,7 @@
 
           <div id="translation-lang-dropdown"
                class="translation-lang-dropdown hidden"
-               role="dialog"
+               role="group"
                aria-label="Choose up to 2 target languages">
             <p class="translation-dropdown-hint">Choose up to 2 languages</p>
             <div id="translation-target-list"
@@ -191,12 +189,12 @@
 
         <span class="source-picker-wrapper">
           <label class="lang-picker-label" for="audio-source-select">Audio In</label>
-          <select id="audio-source-select" class="lang-select source-select" aria-label="Audio input device"></select>
+          <select id="audio-source-select" class="lang-select source-select"></select>
         </span>
 
         <span class="source-picker-wrapper">
           <label class="lang-picker-label" for="max-speakers-select">Max Speakers</label>
-          <select id="max-speakers-select" class="lang-select max-speakers-select" aria-label="Maximum number of speaker lanes">
+          <select id="max-speakers-select" class="lang-select max-speakers-select">
             <option value="1">1</option>
             <option value="2">2</option>
             <option value="3">3</option>
@@ -206,19 +204,19 @@
           </select>
         </span>
 
-        <button id="btn-export" class="btn btn-secondary" aria-label="Save transcript as a VTT chat file">Save Chat</button>
-        <button id="btn-copy-chat" class="btn btn-secondary" aria-label="Copy transcript to clipboard">Copy Chat</button>
-        <button id="btn-summarize-llm" class="btn btn-secondary" aria-label="Copy transcript with LLM summarization prompt to clipboard">Summarize</button>
-        <button id="btn-debug" class="btn btn-secondary" aria-label="Toggle pitch debug overlay" aria-pressed="false">Debug</button>
-        <button id="btn-stereo" class="btn btn-secondary" aria-label="Toggle stereo experiment mode" aria-pressed="false" disabled>Stereo</button>
-        <button id="btn-system-audio" class="btn btn-secondary" aria-label="Capture system/computer audio for source detection" aria-pressed="false" title="Share a tab or screen with audio to detect computer vs microphone speech">Sys Audio</button>
-        <button id="btn-clear" class="btn btn-danger" aria-label="Clear locally saved discussion">Clear Local</button>
+        <button id="btn-export" class="btn btn-secondary" aria-label="Save Chat as a VTT file">Save Chat</button>
+        <button id="btn-copy-chat" class="btn btn-secondary" aria-label="Copy Chat to clipboard">Copy Chat</button>
+        <button id="btn-summarize-llm" class="btn btn-secondary" aria-label="Summarize — copy transcript with prompt">Summarize</button>
+        <button id="btn-debug" class="btn btn-secondary" aria-label="Debug — toggle pitch overlay" aria-pressed="false">Debug</button>
+        <button id="btn-stereo" class="btn btn-secondary" aria-label="Stereo — toggle experiment mode" aria-pressed="false" disabled>Stereo</button>
+        <button id="btn-system-audio" class="btn btn-secondary" aria-label="Sys Audio — capture computer audio" aria-pressed="false" title="Share a tab or screen with audio to detect computer vs microphone speech">Sys Audio</button>
+        <button id="btn-clear" class="btn btn-danger" aria-label="Clear Local — remove saved discussion">Clear Local</button>
 
         <!-- Layout toggle — shown here only when the primary toolbar toggle is hidden (narrow screens) -->
         <button id="btn-view-toggle-alt"
           class="btn btn-secondary btn-view-toggle-alt"
           type="button"
-          aria-label="Switch transcript layout"
+          aria-label="Layout: Chat — switch to lanes view"
           aria-pressed="false">
           Layout: Chat
         </button>
@@ -286,15 +284,15 @@
         </section>
 
         <!-- Interim (in-flight) speech strip — shows grayed text while speaking -->
-    <div class="interim-strip"
-         role="status"
-         aria-live="polite"
-         aria-atomic="true"
-         aria-label="Speech currently in progress">
+    <div class="interim-strip">
       <span class="interim-label" aria-hidden="true">Live</span>
-      <span id="live-transcript" class="interim-text"></span>
-      <span id="lang-mismatch-hint" class="lang-mismatch-hint hidden"></span>
+      <span id="live-transcript" class="interim-text" aria-hidden="true"></span>
+      <span id="lang-mismatch-hint" class="lang-mismatch-hint hidden" role="status" aria-live="polite"></span>
     </div>
+
+    <!-- Single polite live region for in-progress speech. Final cards are
+         announced by the lane/chat role="log" containers. -->
+    <span id="interim-live" class="sr-only" role="status" aria-live="polite"></span>
 
     <aside id="debug-overlay" class="debug-overlay hidden" aria-live="polite" aria-label="Pitch centroid debug overlay">
       <div class="debug-head">
@@ -317,7 +315,7 @@
           <button id="btn-debug-log-copy" class="btn btn-secondary" type="button"
                   aria-label="Copy debug info to clipboard">Copy</button>
           <button id="btn-debug-log-issue" class="btn btn-secondary" type="button"
-                  aria-label="Open a pre-filled GitHub issue with debug info">GitHub Issue</button>
+                  aria-label="Open GitHub Issue with debug info">GitHub Issue</button>
           <button id="btn-debug-log-clear" class="btn btn-secondary" type="button"
                   aria-label="Clear debug console log">Clear</button>
         </div>
@@ -345,12 +343,13 @@
       <span class="autosave-note">Auto-saved ✓</span>
     </div>
 
-    <div class="footer-community" role="note" aria-live="polite">
+    <div class="footer-community" role="note">
       <span>Help shape EchoLocate for deaf and hard-of-hearing users:</span>
       <a href="https://github.com/mgifford/EchoLocate" target="_blank" rel="noopener noreferrer">Join the project on GitHub</a>
+      <button id="btn-privacy-info" class="privacy-link" type="button">Privacy</button>
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-2"></script>
+  <script src="app.js?v=20261110-3"></script>
 </body>
 </html>
