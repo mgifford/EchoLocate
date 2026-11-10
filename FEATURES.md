@@ -29,6 +29,13 @@ Speech recognition path:
 5. Card payload is posted to local route intercepted by Service Worker
 6. Returned HTML fragment is inserted into lane/chat containers
 
+Engine selection:
+
+1. **Browser speech service** — the default Web Speech API path.
+2. **On-device (experimental)** — Chrome's `processLocally` recognizer, gated by
+   `SpeechRecognition.available()` and installed with `SpeechRecognition.install()`.
+   The browser downloads the language pack; EchoLocate does not fetch weights.
+
 Reliability behavior:
 
 - A watchdog timer restarts recognition when no results are received for a configured interval.

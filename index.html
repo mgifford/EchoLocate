@@ -148,6 +148,14 @@
         <label class="lang-picker-label" for="lang-select">Language</label>
         <select id="lang-select" class="lang-select" aria-label="Recognition language"></select>
 
+        <span class="source-picker-wrapper">
+          <label class="lang-picker-label" for="engine-select">Engine</label>
+          <select id="engine-select" class="lang-select engine-select" aria-label="Speech recognition engine"></select>
+        </span>
+        <button id="btn-install-langpack" class="btn btn-secondary" type="button" hidden
+                aria-label="Download on-device language pack">Download language pack</button>
+        <span id="engine-status" class="translation-status hidden" aria-live="polite"></span>
+
         <div class="translation-controls" id="translation-controls">
           <span class="translation-row">
             <label class="translation-enable-label" for="translation-enabled-toggle">
@@ -343,6 +351,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-1"></script>
+  <script src="app.js?v=20261110-2"></script>
 </body>
 </html>

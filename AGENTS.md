@@ -12,6 +12,7 @@ Primary runtime pieces:
 
 ## Current Product Behavior
 - Real-time transcription uses Web Speech API (Chrome/Edge family support)
+- Speech engine is selectable: browser speech service (default) or Chrome's experimental on-device recognizer; the on-device language pack is browser-managed and only installed on user action
 - Simulated speaker grouping uses pitch centroid heuristics (not true diarization)
 - Dynamic speaker lanes are created on demand and do not auto-hide
 - Maximum speaker profiles is capped at 6
@@ -37,7 +38,8 @@ Before committing, verify:
 3. New cards render in correct lane and include card-level match note
 4. Existing cards remain visible while new speakers are added
 5. Privacy notice text remains accurate and visible until dismissed
-6. Light and dark themes both remain readable
+6. Both engines show an accurate status; choosing an unavailable engine must not disable Start
+7. Light and dark themes both remain readable
 
 ## Local Development
 

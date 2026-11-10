@@ -265,12 +265,73 @@ function getEffectiveTranslationTargetsForProfile(profile) {
   return normalizeTranslationTargets(State.translationTargets);
 }
 
+// ── Speech engines ────────────────────────────────────────────────────────────
+// browser-service: today's Web Speech API path.  On Chrome/Edge the browser
+// may use a remote speech service.
+// browser-local: Chrome's experimental on-device recognizer
+// (`processLocally` + SpeechRecognition.available/install).  The browser owns
+// and downloads the language pack; EchoLocate never fetches weights itself.
+const ENGINE_STORAGE_KEY = 'echolocate-rec-engine';
+
+const SPEECH_ENGINES = Object.freeze({
+  'browser-service': {
+    label: 'Browser speech service',
+    description: 'Uses the browser\'s speech service. Chrome and Edge may process audio on vendor servers.',
+    requiresNetwork: true,
+    local: false,
+  },
+  'browser-local': {
+    label: 'On-device (experimental)',
+    description: 'Uses Chrome\'s on-device recognizer. The browser downloads the language pack once.',
+    requiresNetwork: false,
+    local: true,
+  },
+});
+
+function normalizeSpeechEngine(value) {
+  return Object.prototype.hasOwnProperty.call(SPEECH_ENGINES, value) ? value : 'browser-service';
+}
+
+function engineRequiresNetwork(engine) {
+  return SPEECH_ENGINES[normalizeSpeechEngine(engine)].requiresNetwork;
+}
+
+function getSpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function supportsOnDeviceSpeech(SR = getSpeechRecognitionCtor()) {
+  return !!SR && typeof SR.available === 'function' && typeof SR.install === 'function';
+}
+
+/**
+ * Map a SpeechRecognition.available() result to UI copy.
+ * Pure so it can be tested without a browser.
+ */
+function onDeviceStatusText(status) {
+  switch (status) {
+    case 'available':
+      return { text: 'On-device model ready', tone: 'available' };
+    case 'downloadable':
+      return { text: 'Language pack not installed — press Download language pack', tone: 'checking' };
+    case 'downloading':
+      return { text: 'Language pack downloading…', tone: 'downloading' };
+    case 'unavailable':
+      return { text: 'On-device recognition unavailable for this language', tone: 'unavailable' };
+    case 'unsupported':
+      return { text: 'This browser does not expose on-device speech recognition', tone: 'unsupported' };
+    default:
+      return { text: 'Checking on-device model…', tone: 'checking' };
+  }
+}
+
 const State = {
   isRunning:                 false,
   pitchHistory:              [],
   utteranceSamples:          [],
   currentUtteranceStartedAt: null,
   recognitionLang:           localStorage.getItem('echolocate-rec-lang') ?? DEFAULT_RECOGNITION_LANG,
+  recognitionEngine:         normalizeSpeechEngine(localStorage.getItem(ENGINE_STORAGE_KEY)),
   languageDetector:          null,
   supportedLanguages:        [],
   lastResultAt:              0,
@@ -1589,6 +1650,10 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
   const select = document.getElementById('lang-select');
   if (select && select.value !== lang) select.value = lang;
 
+  if (State.recognitionEngine === 'browser-local') {
+    updateEngineStatus();
+  }
+
   if (SpeechEngine._rec) {
     SpeechEngine._rec.lang = lang || '';
     if (opts.fromUser && State.isRunning) {
@@ -1601,6 +1666,117 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
       }
     }
   }
+}
+
+async function probeOnDeviceStatus(lang) {
+  const SR = getSpeechRecognitionCtor();
+  if (!supportsOnDeviceSpeech(SR)) return 'unsupported';
+  const language = lang || State.recognitionLang || 'en-US';
+  try {
+    const result = await SR.available({ langs: [language], quality: 'conversation', processLocally: true });
+    return typeof result === 'string' ? result : 'unsupported';
+  } catch (err) {
+    console.warn('[EchoLocate] On-device availability check failed:', err.message);
+    return 'unsupported';
+  }
+}
+
+async function installOnDeviceLanguagePack(lang) {
+  const SR = getSpeechRecognitionCtor();
+  if (!supportsOnDeviceSpeech(SR)) return false;
+  const language = lang || State.recognitionLang || 'en-US';
+  try {
+    return await SR.install({ langs: [language], processLocally: true });
+  } catch (err) {
+    console.warn('[EchoLocate] On-device language pack install failed:', err.message);
+    return false;
+  }
+}
+
+let engineStatusToken = 0;
+
+function setEngineStatus(status) {
+  const el = document.getElementById('engine-status');
+  const installBtn = document.getElementById('btn-install-langpack');
+  if (!el) return;
+  if (!status) {
+    el.textContent = '';
+    el.className = 'translation-status hidden';
+    if (installBtn) installBtn.hidden = true;
+    return;
+  }
+  const { text, tone } = onDeviceStatusText(status);
+  el.textContent = text;
+  el.className = `translation-status translation-status--${tone}`;
+  if (installBtn) installBtn.hidden = status !== 'downloadable';
+}
+
+async function updateEngineStatus() {
+  // Guard against out-of-order availability probes when the language or engine
+  // changes while a previous check is still in flight.
+  const token = ++engineStatusToken;
+  if (!document.getElementById('engine-status')) return;
+  if (State.recognitionEngine !== 'browser-local') {
+    setEngineStatus(null);
+    return;
+  }
+  if (!supportsOnDeviceSpeech()) {
+    setEngineStatus('unsupported');
+    return;
+  }
+  setEngineStatus('checking');
+  const status = await probeOnDeviceStatus();
+  if (token !== engineStatusToken) return;
+  setEngineStatus(status);
+}
+
+async function initEngineControl() {
+  const select = document.getElementById('engine-select');
+  if (!select) return;
+
+  select.innerHTML = '';
+  for (const [id, meta] of Object.entries(SPEECH_ENGINES)) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = meta.label;
+    if (id === 'browser-local' && !supportsOnDeviceSpeech()) {
+      option.disabled = true;
+      option.textContent += ' — not supported here';
+    }
+    select.appendChild(option);
+  }
+  select.value = State.recognitionEngine;
+  select.title = SPEECH_ENGINES[State.recognitionEngine].description;
+
+  select.addEventListener('change', () => {
+    const next = normalizeSpeechEngine(select.value);
+    State.recognitionEngine = next;
+    localStorage.setItem(ENGINE_STORAGE_KEY, next);
+    select.title = SPEECH_ENGINES[next].description;
+    if (State.isRunning) {
+      SpeechEngine.stop();
+      syncTransportState();
+      setStatus('idle', 'Engine changed — press Start');
+    }
+    // Rebuild the recognizer so the next session uses the new mode.
+    SpeechEngine.init();
+    updateEngineStatus();
+  });
+
+  const installBtn = document.getElementById('btn-install-langpack');
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      installBtn.disabled = true;
+      setEngineStatus('downloading');
+      setStatus('active', 'Downloading on-device language pack…');
+      const ok = await installOnDeviceLanguagePack();
+      setStatus(ok ? 'active' : 'error', ok ? 'On-device language pack installed' : 'Language pack download failed');
+      installBtn.disabled = false;
+      await updateEngineStatus();
+    });
+  }
+
+  await updateEngineStatus();
 }
 
 function applyView(view) {
@@ -2667,7 +2843,8 @@ const DebugLog = {
       `UA: ${navigator.userAgent}`,
       `Browser: ${parseBrowserName()} | isChrome: ${isChromeBrowser()} | isEdge: ${isEdgeBrowser()} | isMobile: ${isMobileBrowser()}`,
       `ChromeVersion: ${getChromeVersion() || 'n/a'}`,
-      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'}`,
+      `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'} | engine: ${State.recognitionEngine}`,
+      `OnDeviceSR: ${supportsOnDeviceSpeech() ? 'API present' : 'not available'}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
       `MicEnergy: ${micEnergyStr} | LastResult: ${lastResultAgo}`,
@@ -2871,8 +3048,11 @@ const SpeechEngine = {
     rec.interimResults = true;
     rec.lang = State.recognitionLang || DEFAULT_RECOGNITION_LANG;
     rec.maxAlternatives = 1;
+    // Chrome's experimental on-device recognizer. Browsers without the
+    // property ignore the assignment; start() verifies availability first.
+    rec.processLocally = State.recognitionEngine === 'browser-local';
 
-    console.log('[EchoLocate] SpeechRecognition initialized — lang:', rec.lang || '(auto/browser default)', '| continuous:', rec.continuous, '| interimResults:', rec.interimResults);
+    console.log('[EchoLocate] SpeechRecognition initialized — engine:', State.recognitionEngine, '| lang:', rec.lang || '(auto/browser default)', '| continuous:', rec.continuous, '| interimResults:', rec.interimResults);
 
     rec.onstart = () => {
       console.log('[EchoLocate] SpeechRecognition started — lang:', this._rec?.lang || '(auto)');
@@ -2933,6 +3113,13 @@ const SpeechEngine = {
     rec.onerror = (event) => {
       console.error('[EchoLocate] SpeechRecognition error — type:', event.error, '| message:', event.message || '(none)');
       if (event.error === 'no-speech') return;
+      if (event.error === 'language-not-supported') {
+        setStatus('error', 'On-device language pack missing');
+        State.isRunning = false;
+        syncTransportState();
+        updateEngineStatus();
+        return;
+      }
       if (event.error === 'not-allowed') {
         setStatus('error', 'Mic access blocked');
         State.isRunning = false;
@@ -3255,7 +3442,7 @@ const SpeechEngine = {
       setStatus('error', 'Web Speech API unavailable');
       return;
     }
-    if (!navigator.onLine) {
+    if (engineRequiresNetwork(State.recognitionEngine) && !navigator.onLine) {
       setStatus('error', 'Offline — check your connection and try again');
       return;
     }
@@ -3264,6 +3451,23 @@ const SpeechEngine = {
     // Default to English when no language is explicitly chosen.
     if (!State.recognitionLang) {
       applyRecognitionLanguage('en-US');
+    }
+
+    if (State.recognitionEngine === 'browser-local') {
+      setStatus('active', 'Checking on-device model…');
+      const status = await probeOnDeviceStatus();
+      if (status !== 'available') {
+        State.isRunning = false;
+        syncTransportState();
+        setStatus('error', onDeviceStatusText(status).text);
+        updateEngineStatus();
+        return;
+      }
+      if (!State.isRunning) {
+        // Stop was pressed while the availability check was in flight.
+        syncTransportState();
+        return;
+      }
     }
 
     setStatus('active', 'Starting…');
@@ -4039,6 +4243,7 @@ async function boot() {
   initNavOptions();
   await initAudioDeviceSelector();
   initSpeakerLimitControl();
+  initEngineControl().catch((err) => console.warn('[EchoLocate] Engine control init failed:', err.message));
 
   await registerServiceWorker();
   TranscriptCtrl.init();
