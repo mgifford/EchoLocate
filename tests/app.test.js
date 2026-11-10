@@ -1429,3 +1429,123 @@ describe('resolveSpeakerProfile attribution', () => {
     assert.equal(state('State.profiles.length'), 3);
   });
 });
+
+// ── Speech engine selection ───────────────────────────────────────────────────
+
+describe('normalizeSpeechEngine', () => {
+  const fn = ctx.normalizeSpeechEngine;
+
+  it('accepts the supported engines', () => {
+    assert.equal(fn('browser-service'), 'browser-service');
+    assert.equal(fn('browser-local'), 'browser-local');
+  });
+
+  it('falls back to browser-service for unknown, empty and nullish values', () => {
+    assert.equal(fn('wasm-local'), 'browser-service');
+    assert.equal(fn(''), 'browser-service');
+    assert.equal(fn(null), 'browser-service');
+    assert.equal(fn(undefined), 'browser-service');
+    assert.equal(fn('toString'), 'browser-service');
+  });
+});
+
+describe('engineRequiresNetwork', () => {
+  const fn = ctx.engineRequiresNetwork;
+
+  it('requires network for the browser service', () => {
+    assert.equal(fn('browser-service'), true);
+  });
+
+  it('does not require network for on-device recognition', () => {
+    assert.equal(fn('browser-local'), false);
+  });
+
+  it('treats an unknown engine as the network-requiring default', () => {
+    assert.equal(fn('nope'), true);
+  });
+});
+
+describe('supportsOnDeviceSpeech', () => {
+  const fn = ctx.supportsOnDeviceSpeech;
+
+  it('returns false without a recognizer', () => {
+    assert.equal(fn(null), false);
+    assert.equal(fn(undefined), false);
+  });
+
+  it('returns false without the static available()/install() API', () => {
+    assert.equal(fn(class {}), false);
+    assert.equal(fn({ available() {} }), false);
+    assert.equal(fn({ install() {} }), false);
+  });
+
+  it('returns true only when both static methods exist', () => {
+    const SR = class {};
+    SR.available = () => {};
+    SR.install = () => {};
+    assert.equal(fn(SR), true);
+  });
+});
+
+describe('onDeviceStatusText', () => {
+  const fn = ctx.onDeviceStatusText;
+
+  it('describes each availability state', () => {
+    assert.deepEqual(fn('available'), { text: 'On-device model ready', tone: 'available' });
+    assert.match(fn('downloadable').text, /Download language pack/i);
+    assert.match(fn('downloading').text, /downloading/i);
+    assert.match(fn('unavailable').text, /unavailable/i);
+    assert.match(fn('unsupported').text, /does not expose/i);
+  });
+
+  it('falls back to a checking state for unknown values', () => {
+    assert.equal(fn('weird').tone, 'checking');
+    assert.match(fn(undefined).text, /checking/i);
+  });
+});
+
+describe('on-device availability probe', () => {
+  it('returns unsupported when the API is absent', async () => {
+    const c = loadApp();
+    const status = await vm.runInContext('probeOnDeviceStatus()', c);
+    assert.equal(status, 'unsupported');
+  });
+
+  it('passes conversation quality and processLocally to available()', async () => {
+    const c = loadApp();
+    vm.runInContext(`
+      window.SpeechRecognition = class {
+        static available(options) { window.__availableOptions = options; return Promise.resolve('downloadable'); }
+        static install() { return Promise.resolve(true); }
+      };
+      State.recognitionLang = 'fr-FR';
+    `, c);
+    const status = await vm.runInContext('probeOnDeviceStatus()', c);
+    assert.equal(status, 'downloadable');
+    assert.equal(c.window.__availableOptions.processLocally, true);
+    assert.equal(c.window.__availableOptions.quality, 'conversation');
+    assert.deepEqual(c.window.__availableOptions.langs, ['fr-FR']);
+  });
+});
+
+describe('SpeechEngine engine mode', () => {
+  it('sets processLocally for the on-device engine', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      window.SpeechRecognition = class { constructor() { this.processLocally = false; } };
+      State.recognitionEngine = 'browser-local';
+      SpeechEngine.init();
+    `, c);
+    assert.equal(vm.runInContext('SpeechEngine._rec.processLocally', c), true);
+  });
+
+  it('does not set processLocally for the browser service', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      window.SpeechRecognition = class { constructor() { this.processLocally = true; } };
+      State.recognitionEngine = 'browser-service';
+      SpeechEngine.init();
+    `, c);
+    assert.equal(vm.runInContext('SpeechEngine._rec.processLocally', c), false);
+  });
+});

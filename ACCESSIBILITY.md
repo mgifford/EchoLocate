@@ -48,6 +48,7 @@ Run these checks on major updates:
 4. Zoom and reflow: test at 200% zoom and narrow viewport
 5. Motion: ensure reduced-motion mode removes non-essential animations
 6. Privacy copy: verify notice remains clear and accurate
+7. Engine switch: browser service / on-device status, Download language pack, unavailable message, and Start recovery
 
 ## Browser Notes
 Recommended: current Chrome or Edge for full speech feature support.

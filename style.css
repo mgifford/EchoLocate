@@ -1273,6 +1273,10 @@ body {
   min-width: 140px;
 }
 
+.engine-select {
+  min-width: 190px;
+}
+
 #btn-stereo[disabled] {
   opacity: 0.25;
 }

@@ -100,10 +100,26 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 2. There is no EchoLocate backend — the Service Worker only renders local page fragments
 3. Speech recognition uses the browser's Web Speech API. In Chrome and Edge that can send audio to the
    browser vendor's speech servers, under that vendor's terms. EchoLocate does not control that path
-4. Optional translation uses Chrome's built-in Translator API on device; Chrome may download a small
+4. The experimental **On-device** engine asks Chrome to recognise speech locally; Chrome downloads and
+   manages the language pack itself (see below)
+5. Optional translation uses Chrome's built-in Translator API on device; Chrome may download a small
    translation model on first use
-5. The interface, transcript, export and language detection work offline; browser speech recognition
-   requires a network connection in Chrome and Edge
+6. The interface, transcript, export and language detection work offline; the browser speech service
+   requires a network connection in Chrome and Edge, while the on-device engine is designed to work offline
+
+## Speech engines (experimental)
+
+**Options → Engine** selects how speech is transcribed:
+
+- **Browser speech service** (default) — the Web Speech API. Chrome and Edge may process audio on
+  vendor servers.
+- **On-device (experimental)** — Chrome's `processLocally` recognizer. Chrome downloads a language
+  pack the first time; press **Download language pack** in Options. EchoLocate never downloads model
+  weights itself.
+
+On-device availability depends on the Chrome version, platform and language. If it is not available,
+the app says so and leaves the browser service usable. This path has not yet been tested across
+browsers, devices and languages — treat it as experimental.
 
 ## Run locally (offline-friendly)
 
