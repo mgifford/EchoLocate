@@ -40,9 +40,9 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
-- **Content Security Policy** (this PR): meta CSP with a hashed import map,
+- **Content Security Policy** (PR #63): meta CSP with a hashed import map,
   external theme bootstrap, no eval/inline scripts, local-only connect-src,
-  plus regression tests.
+  plus regression tests. See <https://github.com/mgifford/EchoLocate/pull/63>.
 - **Model consent infrastructure** (PR #62): manifest, exact-revision
   consent, SHA-256 verification, progress/cancel, storage refusal, Cache
   Storage install/removal and a consent dialog. No model ships yet. See
