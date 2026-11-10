@@ -40,6 +40,9 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
+- **Content Security Policy** (PR #63): meta CSP with a hashed import map,
+  external theme bootstrap, no eval/inline scripts, local-only connect-src,
+  plus regression tests. See <https://github.com/mgifford/EchoLocate/pull/63>.
 - **Model consent infrastructure** (PR #62): manifest, exact-revision
   consent, SHA-256 verification, progress/cancel, storage refusal, Cache
   Storage install/removal and a consent dialog. No model ships yet. See
@@ -121,8 +124,10 @@ no regression in lane announcement behaviour.
       the cache; do not pre-cache model weights.
 - [x] Serialise caption commits so two finals in one `onresult` cannot
       interleave; keep a stable segment ordering.
-- [ ] Decide and document a CSP before workers/models are added (inline theme
-      script, htmx, vendored modules today).
+- [x] Decide and document a CSP before workers/models are added: meta policy
+      with `default-src 'self'`, self + hashed-import-map scripts,
+      `wasm-unsafe-eval`, inline styles only, no eval, and local-only
+      `connect-src`. Model hosts must be added before downloads ship.
 
 Acceptance: storage failure is visible and recoverable; export never silently
 drops cards; offline navigation gets a real response; out-of-order cards are

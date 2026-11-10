@@ -37,7 +37,10 @@ Current runtime:
 - **Accessibility:** Label in Name fixes, one interim live region, non-modal
   translation popup with focus return, reopenable privacy notice, forced-colors
   fallbacks, and a bounded service-worker boot wait.
-- **Tests:** 339 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
+- **Security:** meta CSP with self-only defaults, a hashed import map, external
+  theme bootstrap, no eval/inline scripts, `wasm-unsafe-eval`, inline styles and
+  local-only `connect-src`.
+- **Tests:** 348 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
   is no CI workflow yet.
 
 ## Historical problem statement (original review, still useful context)
