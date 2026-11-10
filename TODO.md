@@ -36,6 +36,9 @@ Related material:
   visible and announced, caption commits are serialized, and the service
   worker returns a real 503 with a versioned cache and cleanup. See
   <https://github.com/mgifford/EchoLocate/pull/59>.
+- **SpeechAdapter + capabilities** (this PR): both engines expose the same
+  adapter contract, and a local-only capability snapshot (Web Speech,
+  on-device status, WebGPU adapter, WASM, storage) is available from Debug.
 - **Planning pack reconciliation** (PR #60): the pack is versioned at the
   repository root, its baseline matches the current app, its synthetic fixtures
   are confirmed present and referenced, contracts are annotated as
@@ -46,25 +49,27 @@ Related material:
 
 ### N1. SpeechAdapter + CapabilityDetector + browser-local engine
 
-- [ ] Wrap the existing Web Speech recognizer in a `SpeechAdapter` contract
-      (`init`/`start`/`stop`/`setLanguage`/`dispose`, interim/final/error/end
-      callbacks, engine metadata). Default and behaviour stay
-      `browser-service`.
-- [ ] Add `CapabilityDetector`: secure context, `getUserMedia`, Web Speech
+- [x] Wrap the existing Web Speech recognizer in a `SpeechAdapter` contract
+      (`init`/`start`/`stop`/`setLanguage`/`dispose`, engine metadata).
+      Default and behaviour stay `browser-service`; event delivery stays inside
+      `SpeechEngine` until the worker work.
+- [x] Add `CapabilityDetector`: secure context, `getUserMedia`, Web Speech
       presence, `SpeechRecognition.available({ langs, quality: 'conversation',
-      processLocally: true })`, WebGPU adapter/limits, WASM, storage estimate.
-      Record *why* something is unavailable. Never fetch weights to probe.
+      processLocally: true })`, WebGPU adapter, WASM features, storage
+      estimate. Records *why* something is unavailable and never fetches
+      weights or the network.
 - [x] Add the experimental `browser-local` engine: `processLocally = true`,
       `available()`/`install()` behind an explicit user action, disclosure that
       the browser downloads a language pack, `language-not-supported`
       handling, and `downloadable`/`downloading`/`unavailable` states (PR #57).
 - [x] Persist the chosen engine. Keep it independent from the speaker-analysis
       setting (`off`/`basic`/`advanced`) (PR #57).
-- [ ] Fall back only with disclosure: a local-to-cloud change needs explicit
+- [x] Fall back only with disclosure: a local-to-cloud change needs explicit
       consent, and an unavailable engine must leave the other one usable.
 - [ ] Replace Chrome-version UA gates for the mic-analysis graph with a
-      feature/runtime decision where that can be done safely; keep the current
-      workaround until it is tested.
+      feature/runtime decision where that can be done safely. The capability
+      snapshot now reports `compatibility.captionsOnly` and the workaround is
+      documented; changing it still needs device testing.
 
 Acceptance:
 

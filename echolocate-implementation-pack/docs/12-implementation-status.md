@@ -7,7 +7,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 | Pack phase | Status | Notes |
 |---|---|---|
 | PR 0 — baseline | **Done** | Repository reviewed, tests run (`node --check`, `npm test`), current behaviour recorded in `docs/00-project-baseline.md`. |
-| PR 1 — adapters + capability detection | **Partial** | Engine selector, persistence, `browser-local` (`processLocally`, `available`, `install`) and disclosure shipped in repo PR #57. Still missing: a `SpeechAdapter` contract around `SpeechEngine`, a CapabilityRegistry for WebGPU/WASM/storage, and removal of the Chrome-version UA gate. |
+| PR 1 — adapters + capability detection | **Mostly done** | Engine selector, persistence, `browser-local` (`processLocally`, `available`, `install`) and disclosure shipped in PR #57. A `SpeechAdapter` contract and a local-only capability snapshot (Web Speech, on-device, WebGPU adapter, WASM, storage) shipped in the next PR. Still open: replacing the Chrome ≤149 UA gate after device testing. |
 | PR 2 — model management + consent | **Next** | Not started. Include the existing Chrome Translator model download in the consent inventory. |
 | PR 3 — WebGPU ASR | **Planned** | Start with `onnx-community/whisper-base` (Apache-2.0, fp16 ~146 MB); `whisper-tiny` fallback. Parakeet deferred. |
 | PR 4 — advanced diarization | **Planned** | PyAnnote + WeSpeaker, quality gates, exemplars, overlap. |
@@ -27,7 +27,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 
 - `app.js` is a classic script tested by executing it in a Node `vm` context.
   ES-module adapters need an explicit loading/test strategy before PR 1 lands.
-- There is no CI workflow; checks are `node --check` and `npm test` (315 tests
+- There is no CI workflow; checks are `node --check` and `npm test` (326 tests
   at this snapshot).
 - GitHub Pages cannot set COOP/COEP headers, so `SharedArrayBuffer` and
   multi-threaded WASM are unavailable. Plan single-thread ORT.
@@ -40,6 +40,6 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 
 1. PR 2 consent/ModelManager inventory, including the Chrome Translator
    download already present in the app.
-2. Finish PR 1's adapter/capability work after deciding the module strategy.
+2. Replace the Chrome ≤149 UA gate when a device test matrix is available.
 3. Then the WebGPU whisper-base experiment, with measured WER/latency/memory
    and a no-upload network audit.

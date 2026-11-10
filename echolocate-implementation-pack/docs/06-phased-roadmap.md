@@ -15,9 +15,9 @@ Each PR must remain reviewable, include tests, and keep existing baseline functi
 
 **Status (2026-11-10):** engine selection, persistence, on-device
 `available()`/`install()` and the privacy/disclosure wording shipped in PR #57.
-Still to do: the `SpeechAdapter` contract around `SpeechEngine`, a capability
-registry for WebGPU/WASM/storage, and replacing the Chrome-version UA gate with
-a runtime feature decision.
+The `SpeechAdapter` contract and a local-only capability snapshot (Web Speech,
+on-device, WebGPU adapter, WASM, storage) shipped in the next PR. Still to do:
+replacing the Chrome ≤149 UA gate after device testing.
 
 ## PR 2: Explicit model management and consent — **next**
 - Add pinned, validated model manifest; separate download approvals; size/license/source/revision disclosure.

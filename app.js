@@ -326,6 +326,151 @@ function onDeviceStatusText(status) {
   }
 }
 
+// ── SpeechAdapter contract ───────────────────────────────────────────────────
+// A thin contract around the current recognizer implementations.  WebGPU/WASM
+// engines will implement the same methods; event handling stays inside
+// SpeechEngine until the timeline/worker work (pack PR 3/5).
+const SPEECH_ADAPTERS = Object.freeze({
+  'browser-service': {
+    id: 'browser-service',
+    create: () => makeSpeechAdapter('browser-service'),
+  },
+  'browser-local': {
+    id: 'browser-local',
+    create: () => makeSpeechAdapter('browser-local'),
+  },
+});
+
+const speechAdapterCache = new Map();
+
+function makeSpeechAdapter(engine) {
+  const id = normalizeSpeechEngine(engine);
+  return {
+    engine: id,
+    requiresNetwork: engineRequiresNetwork(id),
+    isAvailable: () => !!getSpeechRecognitionCtor(),
+    init: () => SpeechEngine.init(),
+    start: () => SpeechEngine.start(),
+    stop: () => SpeechEngine.stop(),
+    setLanguage: (lang) => {
+      if (SpeechEngine._rec) SpeechEngine._rec.lang = lang || '';
+    },
+    dispose: () => SpeechEngine.stop(),
+  };
+}
+
+function getSpeechAdapter(engine = State.recognitionEngine) {
+  const id = normalizeSpeechEngine(engine);
+  if (!speechAdapterCache.has(id)) {
+    speechAdapterCache.set(id, SPEECH_ADAPTERS[id].create());
+  }
+  return speechAdapterCache.get(id);
+}
+
+// ── Capability detection ─────────────────────────────────────────────────────
+// No network probes and no model weights: everything here is a local feature
+// check or a browser API query.  A WebGPU adapter only proves the API works,
+// not that a model will run.
+
+// Minimal wasm module using a SIMD instruction; validate() is a pure check.
+const WASM_SIMD_TEST = new Uint8Array([
+  0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0,
+  10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
+]);
+
+function detectWasmFeatures(
+  wasm = (typeof WebAssembly === 'object' ? WebAssembly : null),
+  globalObj = globalThis,
+) {
+  if (!wasm || typeof wasm.validate !== 'function') {
+    return { supported: false, simd: false, threads: false };
+  }
+  let simd = false;
+  try {
+    simd = wasm.validate(WASM_SIMD_TEST);
+  } catch {
+    simd = false;
+  }
+  const threads = typeof SharedArrayBuffer !== 'undefined' && !!globalObj.crossOriginIsolated;
+  return { supported: true, simd, threads };
+}
+
+async function probeWebGpu(gpu = (typeof navigator !== 'undefined' ? navigator.gpu : null)) {
+  if (!gpu || typeof gpu.requestAdapter !== 'function') {
+    return { api: false, adapter: false, reason: 'navigator.gpu unavailable' };
+  }
+  try {
+    const adapter = await gpu.requestAdapter();
+    return {
+      api: true,
+      adapter: !!adapter,
+      reason: adapter ? null : 'No compatible GPU adapter',
+    };
+  } catch (err) {
+    return { api: true, adapter: false, reason: err.message };
+  }
+}
+
+async function detectCapabilities({
+  win = (typeof window !== 'undefined' ? window : {}),
+  nav = (typeof navigator !== 'undefined' ? navigator : {}),
+  storage = (nav && nav.storage) || null,
+} = {}) {
+  const SR = win.SpeechRecognition || win.webkitSpeechRecognition || null;
+  const onDevice = supportsOnDeviceSpeech(SR)
+    ? await probeOnDeviceStatus(State.recognitionLang, SR)
+    : 'unsupported';
+
+  const webgpu = await probeWebGpu(nav && nav.gpu);
+  const wasm = detectWasmFeatures();
+
+  let storageInfo = null;
+  try {
+    if (storage && typeof storage.estimate === 'function') {
+      storageInfo = await storage.estimate();
+    }
+  } catch {
+    storageInfo = null;
+  }
+
+  const onDeviceAvailable = ['available', 'downloadable', 'downloading'].includes(onDevice);
+
+  return {
+    checkedAt: new Date().toISOString(),
+    secureContext: !!win.isSecureContext,
+    microphone: !!(nav && nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function'),
+    webSpeech: { supported: !!SR, onDevice },
+    webgpu,
+    wasm,
+    storage: storageInfo,
+    engines: {
+      'browser-service': {
+        available: !!SR,
+        reason: SR ? null : 'Web Speech API unavailable',
+      },
+      'browser-local': {
+        available: onDeviceAvailable,
+        status: onDevice,
+        reason: onDevice === 'unsupported'
+          ? 'On-device API unavailable'
+          : (onDevice === 'unavailable' ? 'No language pack for this language' : null),
+      },
+      'webgpu-local': { available: false, planned: true, reason: 'Not implemented in this build' },
+      'wasm-local': { available: false, planned: true, reason: 'Not implemented in this build' },
+    },
+    compatibility: {
+      captionsOnly: !usesMicAnalysisGraph(),
+      reason: usesMicAnalysisGraph() ? null : 'Desktop Chrome <=149 mic-analysis workaround still uses a UA check',
+    },
+  };
+}
+
+async function refreshCapabilities(options) {
+  const snapshot = await detectCapabilities(options);
+  State.capabilities = snapshot;
+  return snapshot;
+}
+
 const State = {
   isRunning:                 false,
   pitchHistory:              [],
@@ -333,6 +478,7 @@ const State = {
   currentUtteranceStartedAt: null,
   recognitionLang:           localStorage.getItem('echolocate-rec-lang') ?? DEFAULT_RECOGNITION_LANG,
   recognitionEngine:         normalizeSpeechEngine(localStorage.getItem(ENGINE_STORAGE_KEY)),
+  capabilities:              null,
   languageDetector:          null,
   supportedLanguages:        [],
   lastResultAt:              0,
@@ -1701,7 +1847,7 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
   }
 
   if (SpeechEngine._rec) {
-    SpeechEngine._rec.lang = lang || '';
+    getSpeechAdapter().setLanguage(lang);
     if (opts.fromUser && State.isRunning) {
       const label = languageMeta(lang)?.label || lang || 'None (Auto)';
       setStatus('restarting', `Switching language to ${label}...`);
@@ -1714,8 +1860,7 @@ function applyRecognitionLanguage(lang, opts = { fromUser: false }) {
   }
 }
 
-async function probeOnDeviceStatus(lang) {
-  const SR = getSpeechRecognitionCtor();
+async function probeOnDeviceStatus(lang, SR = getSpeechRecognitionCtor()) {
   if (!supportsOnDeviceSpeech(SR)) return 'unsupported';
   const language = lang || State.recognitionLang || 'en-US';
   try {
@@ -1795,17 +1940,18 @@ async function initEngineControl() {
   select.title = SPEECH_ENGINES[State.recognitionEngine].description;
 
   select.addEventListener('change', () => {
+    const previous = State.recognitionEngine;
     const next = normalizeSpeechEngine(select.value);
     State.recognitionEngine = next;
     localStorage.setItem(ENGINE_STORAGE_KEY, next);
     select.title = SPEECH_ENGINES[next].description;
     if (State.isRunning) {
-      SpeechEngine.stop();
+      getSpeechAdapter(previous).stop();
       syncTransportState();
       setStatus('idle', 'Engine changed — press Start');
     }
     // Rebuild the recognizer so the next session uses the new mode.
-    SpeechEngine.init();
+    getSpeechAdapter(next).init();
     updateEngineStatus();
   });
 
@@ -3005,6 +3151,16 @@ const DebugLog = {
       `ChromeVersion: ${getChromeVersion() || 'n/a'}`,
       `SR: ${sr ? 'available' : 'NOT AVAILABLE'} | running: ${State.isRunning} | lang: ${State.recognitionLang || '(auto)'} | engine: ${State.recognitionEngine}`,
       `OnDeviceSR: ${supportsOnDeviceSpeech() ? 'API present' : 'not available'}`,
+      `Capabilities: ${(() => {
+        const caps = State.capabilities;
+        if (!caps) return 'not probed (enable Debug)';
+        const gpu = caps.webgpu.adapter ? 'adapter' : (caps.webgpu.api ? 'api-only' : 'none');
+        const wasm = caps.wasm.supported ? (caps.wasm.simd ? 'simd' : 'basic') : 'none';
+        const quota = caps.storage && Number.isFinite(caps.storage.quota)
+          ? `${Math.round(caps.storage.quota / 1e6)}MB`
+          : 'n/a';
+        return `secure=${caps.secureContext} mic=${caps.microphone} webgpu=${gpu} wasm=${wasm} onDevice=${caps.webSpeech.onDevice} storage=${quota}`;
+      })()}`,
       `Online: ${navigator.onLine} | SecureCtx: ${window.isSecureContext} | SW: ${sw}`,
       `AudioCtx: ${ctx ? `${ctx.state} @ ${ctx.sampleRate} Hz` : 'not started'} | Meyda: ${meydaStr}`,
       `MicEnergy: ${micEnergyStr} | LastResult: ${lastResultAgo}`,
@@ -4241,7 +4397,7 @@ function initControls() {
     btnStart.disabled = true;
     btnStop.disabled = false;
     try {
-      await SpeechEngine.start();
+      await getSpeechAdapter().start();
     } finally {
       // start() can fail (mic denied, offline, unsupported) and return without
       // running.  Always resync so the user is never stuck with a dead Start.
@@ -4250,7 +4406,7 @@ function initControls() {
   });
 
   btnStop.addEventListener('click', () => {
-    SpeechEngine.stop();
+    getSpeechAdapter().stop();
     syncTransportState();
   });
 
@@ -4314,6 +4470,11 @@ function initControls() {
   btnDebug.addEventListener('click', () => {
     State.debugEnabled = !State.debugEnabled;
     updateDebugUI();
+    if (State.debugEnabled) {
+      refreshCapabilities()
+        .then(() => { if (State.debugEnabled) DebugLog.render(); })
+        .catch((err) => console.warn('[EchoLocate] Capability probe failed:', err.message));
+    }
   });
 
   const btnDebugLogClear = document.getElementById('btn-debug-log-clear');
@@ -4425,7 +4586,7 @@ async function boot() {
 
   await registerServiceWorker();
   TranscriptCtrl.init();
-  if (hasSpeech) SpeechEngine.init();
+  if (hasSpeech) getSpeechAdapter().init();
   initControls();
   refreshMergeControls();
   updateStorageStatus(true);
