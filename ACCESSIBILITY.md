@@ -49,6 +49,7 @@ Run these checks on major updates:
 5. Motion: ensure reduced-motion mode removes non-essential animations
 6. Privacy copy: verify notice remains clear and accurate
 7. Engine switch: browser service / on-device status, Download language pack, unavailable message, and Start recovery
+8. Storage: simulate a full localStorage; verify the footer warning and live announcement, and that Export still works
 
 ## Browser Notes
 Recommended: current Chrome or Edge for full speech feature support.

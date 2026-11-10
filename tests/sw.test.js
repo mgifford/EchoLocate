@@ -23,13 +23,19 @@ const swCode = fs.readFileSync(path.join(__dirname, '..', 'sw.js'), 'utf-8');
 
 function loadSw() {
   const ctx = vm.createContext({
-    self: { addEventListener: () => {} },
+    self: {
+      addEventListener: () => {},
+      location: { origin: 'http://localhost:8099' },
+      clients: { claim: () => Promise.resolve() },
+    },
     URL,
     Response,
     console,
     caches: {
       open: () => Promise.resolve({ put: () => {} }),
       match: () => Promise.resolve(null),
+      keys: () => Promise.resolve([]),
+      delete: () => Promise.resolve(true),
     },
     fetch: () => Promise.reject(new Error('fetch not available in tests')),
   });
@@ -45,6 +51,9 @@ const {
   hexToRgb,
   buildCardHTML,
   buildChatMsgHTML,
+  isCacheableRequest,
+  offlineResponse,
+  cleanupCaches,
 } = ctx;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -519,5 +528,69 @@ describe('buildChatMsgHTML', () => {
   it('uses hex speaker color for bubble background', () => {
     const html = buildChatMsgHTML(makeChatCard({ speakerColor: '#ff0000' }));
     assert.ok(html.includes('rgba(255,0,0,'));
+  });
+});
+
+
+// ── Cache policy ──────────────────────────────────────────────────────────────
+
+describe('service worker cache policy', () => {
+  const ORIGIN = 'http://localhost:8099';
+  const makeRequest = (path, { method = 'GET', headers = {} } = {}) => ({
+    method,
+    url: path.startsWith('http') ? path : ORIGIN + path,
+    headers: { has: (name) => Object.prototype.hasOwnProperty.call(headers, name) },
+  });
+
+  it('caches same-origin GET assets', () => {
+    assert.equal(isCacheableRequest(makeRequest('/app.js'), ORIGIN), true);
+    assert.equal(isCacheableRequest(makeRequest('/style.css?v=1'), ORIGIN), true);
+    assert.equal(isCacheableRequest(makeRequest('/vendor/meyda.min.js'), ORIGIN), true);
+  });
+
+  it('does not cache non-GET requests', () => {
+    assert.equal(isCacheableRequest(makeRequest('/app.js', { method: 'POST' }), ORIGIN), false);
+  });
+
+  it('does not cache other origins', () => {
+    assert.equal(isCacheableRequest(makeRequest('https://cdn.example/app.js'), ORIGIN), false);
+  });
+
+  it('never pins the service worker itself', () => {
+    assert.equal(isCacheableRequest(makeRequest('/sw.js'), ORIGIN), false);
+  });
+
+  it('does not cache model weights', () => {
+    assert.equal(isCacheableRequest(makeRequest('/models/language-id/onnx/model.onnx'), ORIGIN), false);
+    assert.equal(isCacheableRequest(makeRequest('/vendor/onnx-runtime/ort-wasm.wasm'), ORIGIN), false);
+    assert.equal(isCacheableRequest(makeRequest('/weights/model.safetensors'), ORIGIN), false);
+    assert.equal(isCacheableRequest(makeRequest('/weights/model.bin'), ORIGIN), false);
+  });
+
+  it('does not cache range requests', () => {
+    assert.equal(
+      isCacheableRequest(makeRequest('/audio.wav', { headers: { range: 'bytes=0-' } }), ORIGIN),
+      false,
+    );
+  });
+
+  it('returns a real 503 instead of undefined on a cache miss', async () => {
+    const response = offlineResponse();
+    assert.equal(response.status, 503);
+    assert.match(await response.text(), /Offline/);
+  });
+
+  it('deletes only superseded echolocate caches', async () => {
+    const deleted = [];
+    const mockCacheStorage = {
+      keys: async () => ['echolocate-v1', 'echolocate-v2', 'other-cache'],
+      delete: async (key) => { deleted.push(key); },
+    };
+    await cleanupCaches(mockCacheStorage);
+    assert.deepEqual(deleted, ['echolocate-v1']);
+  });
+
+  it('uses a new cache version so activation cleans the old one', () => {
+    assert.equal(vm.runInContext('CACHE_NAME', ctx), 'echolocate-v2');
   });
 });

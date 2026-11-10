@@ -1549,3 +1549,143 @@ describe('SpeechEngine engine mode', () => {
     assert.equal(vm.runInContext('SpeechEngine._rec.processLocally', c), false);
   });
 });
+
+// ── Storage honesty ───────────────────────────────────────────────────────────
+
+describe('Storage', () => {
+  it('saves a card and reports success', () => {
+    const c = loadApp();
+    const ok = vm.runInContext(`Storage.save({ segmentId: 'seg-1', text: 'hello' })`, c);
+    assert.equal(ok, true);
+    assert.equal(vm.runInContext('Storage.allCards().length', c), 1);
+  });
+
+  it('returns false when the browser refuses the write', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      localStorage.setItem = () => {
+        const err = new Error('quota exceeded');
+        err.name = 'QuotaExceededError';
+        throw err;
+      };
+    `, c);
+    assert.equal(vm.runInContext(`Storage.save({ text: 'x' })`, c), false);
+  });
+
+  it('reports false from replaceAll when the write fails', () => {
+    const c = loadApp();
+    vm.runInContext(`localStorage.setItem = () => { throw new Error('full'); };`, c);
+    assert.equal(vm.runInContext(`Storage.replaceAll([{ text: 'x' }])`, c), false);
+  });
+
+  it('marks truncation at the 500-card limit and clears it on clear()', () => {
+    const c = loadApp();
+    const result = vm.runInContext(`(() => {
+      for (let i = 0; i < 501; i++) Storage.save({ segmentId: 'seg-' + i, text: 'x' });
+      return { count: Storage.allCards().length, meta: Storage.meta() };
+    })()`, c);
+    assert.equal(result.count, 500);
+    assert.equal(result.meta.truncated, true);
+    assert.equal(typeof result.meta.truncatedAt, 'string');
+
+    vm.runInContext('Storage.clear()', c);
+    assert.equal(vm.runInContext('Storage.meta().truncated', c), false);
+  });
+
+  it('surfaces a quota failure in the footer and the live region', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      const note = { textContent: '', className: '' };
+      const live = { textContent: '' };
+      document.getElementById = (id) => (
+        id === 'autosave-note' ? note : id === 'autosave-live' ? live : null
+      );
+      updateStorageStatus(false);
+      window.__status = { note: note.textContent, cls: note.className, live: live.textContent };
+    `, c);
+    assert.match(c.window.__status.note, /Not saved/);
+    assert.match(c.window.__status.cls, /is-error/);
+    assert.match(c.window.__status.live, /not saved/i);
+    assert.match(c.window.__status.live, /storage is full/i);
+  });
+
+  it('shows the trim warning after truncation', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      for (let i = 0; i < 501; i++) Storage.save({ text: 'x' });
+      const note = { textContent: '', className: '' };
+      const live = { textContent: '' };
+      document.getElementById = (id) => (
+        id === 'autosave-note' ? note : id === 'autosave-live' ? live : null
+      );
+      updateStorageStatus(true);
+      window.__status = { note: note.textContent, cls: note.className, live: live.textContent };
+    `, c);
+    assert.match(c.window.__status.note, /older cards trimmed/i);
+    assert.match(c.window.__status.cls, /is-warning/);
+    assert.match(c.window.__status.live, /500-card/i);
+  });
+
+  it('clears a resolved warning from the live region', () => {
+    const c = loadApp();
+    vm.runInContext(`
+      for (let i = 0; i < 501; i++) Storage.save({ text: 'x' });
+      const note = { textContent: '', className: '' };
+      const live = { textContent: '' };
+      document.getElementById = (id) => (
+        id === 'autosave-note' ? note : id === 'autosave-live' ? live : null
+      );
+      updateStorageStatus(true);
+      window.__trimLive = live.textContent;
+      Storage.clear();
+      State.storageHadError = false;
+      State.storageTruncationAnnounced = false;
+      updateStorageStatus(true);
+      window.__clearedLive = live.textContent;
+      window.__note = note.textContent;
+    `, c);
+    assert.match(c.window.__trimLive, /500-card/i);
+    assert.equal(c.window.__clearedLive, '');
+    assert.equal(c.window.__note, 'Auto-saved ✓');
+  });
+});
+
+// ── Caption commit ordering ───────────────────────────────────────────────────
+
+describe('caption commit queue', () => {
+  it('serialises caption commits in event order', async () => {
+    const c = loadApp();
+    vm.runInContext(`
+      TranscriptCtrl._commitQueue = Promise.resolve();
+      window.__order = [];
+      TranscriptCtrl._commitCardNow = async (text) => {
+        window.__order.push('start:' + text);
+        await Promise.resolve();
+        window.__order.push('end:' + text);
+      };
+      TranscriptCtrl.commitCard('a', 1);
+      TranscriptCtrl.commitCard('b', 1);
+    `, c);
+
+    await vm.runInContext('TranscriptCtrl._commitQueue', c);
+    assert.deepEqual(c.window.__order, ['start:a', 'end:a', 'start:b', 'end:b']);
+  });
+
+  it('does not let a failing commit break later commits', async () => {
+    const c = loadApp();
+    vm.runInContext(`
+      TranscriptCtrl._commitQueue = Promise.resolve();
+      window.__order = [];
+      let first = true;
+      TranscriptCtrl._commitCardNow = async (text) => {
+        if (first) { first = false; throw new Error('boom'); }
+        window.__order.push(text);
+      };
+      TranscriptCtrl.commitCard('a', 1);
+      TranscriptCtrl.commitCard('b', 1);
+    `, c);
+
+    await vm.runInContext('TranscriptCtrl._commitQueue', c);
+    assert.deepEqual(c.window.__order, ['b']);
+  });
+});

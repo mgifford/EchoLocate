@@ -12,7 +12,8 @@
 
 'use strict';
 
-const CACHE_NAME = 'echolocate-v1';
+const CACHE_NAME = 'echolocate-v2';
+const CACHE_PREFIX = 'echolocate-';
 
 // ── Sea creature avatars (indexed by speaker number − 1, wraps at 6) ─────────
 const CREATURE_SVGS = [
@@ -38,9 +39,76 @@ self.addEventListener('install', () => {
 });
 
 self.addEventListener('activate', (event) => {
-  // Claim all open clients so the very first page load is intercepted.
-  event.waitUntil(self.clients.claim());
+  // Drop superseded caches and claim open clients so the first reload is
+  // intercepted without waiting for old tabs to close.
+  event.waitUntil((async () => {
+    await cleanupCaches();
+    await self.clients.claim();
+  })());
 });
+
+async function cleanupCaches(cacheStorage = caches) {
+  try {
+    const keys = await cacheStorage.keys();
+    await Promise.all(
+      keys
+        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+        .map((key) => cacheStorage.delete(key)),
+    );
+  } catch {
+    // Cache cleanup is best effort; activation must still claim clients.
+  }
+}
+
+/**
+ * Never let a cache miss resolve to `undefined`; HTMX and navigations need a
+ * real response. A 503 also makes the failure visible in DevTools.
+ */
+function offlineResponse() {
+  return new Response('Offline — this page is not available in the cache.', {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+}
+
+function isCacheableRequest(request, origin = (self.location && self.location.origin)) {
+  if (!request || request.method !== 'GET') return false;
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return false;
+  }
+  if (origin && url.origin !== origin) return false;
+  // Never pin the worker itself, and never let large model artifacts bloat or
+  // silently fill the cache (the model-consent work will own those files).
+  if (url.pathname.endsWith('/sw.js')) return false;
+  if (/\/(models|onnx-runtime)\//.test(url.pathname)) return false;
+  if (/\.(onnx|safetensors|bin)$/i.test(url.pathname)) return false;
+  if (request.headers && typeof request.headers.has === 'function' && request.headers.has('range')) return false;
+  return true;
+}
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (isCacheableRequest(request) && response.ok && response.type === 'basic') {
+      const clone = response.clone();
+      caches.open(CACHE_NAME)
+        .then((cache) => cache.put(request, clone))
+        .catch(() => {});
+    }
+    return response;
+  } catch {
+    try {
+      const cached = await caches.match(request);
+      return cached || offlineResponse();
+    } catch {
+      return offlineResponse();
+    }
+  }
+}
 
 // ── Fetch interception ────────────────────────────────────────────────────────
 
@@ -65,23 +133,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // All other requests: network first, cache fallback (for offline resilience)
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Cache successful GET responses for same-origin static assets
-        if (
-          event.request.method === 'GET' &&
-          response.ok &&
-          new URL(event.request.url).origin === self.location.origin
-        ) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request))
-  );
+  // All other requests: network first, cache fallback, then a real 503.
+  event.respondWith(networkFirst(event.request));
 });
 
 // ── Route handler ─────────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ Primary runtime pieces:
 - Dynamic speaker lanes are created on demand and do not auto-hide
 - Maximum speaker profiles is capped at 6
 - Confidence context is attached per card in metadata (high/medium/low wording)
-- Session cards persist in localStorage and can be exported as VTT
+- Session cards persist in localStorage and can be exported as VTT; write failures and the 500-card trim are surfaced in the footer
 - Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
 - Light/dark theme toggle is persisted in localStorage
 
@@ -40,6 +40,7 @@ Before committing, verify:
 5. Privacy notice text remains accurate and visible until dismissed
 6. Both engines show an accurate status; choosing an unavailable engine must not disable Start
 7. Light and dark themes both remain readable
+8. Storage failures and the 500-card trim are visible and announced
 
 ## Local Development
 

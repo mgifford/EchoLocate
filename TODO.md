@@ -30,6 +30,10 @@ Related material:
   notice, forced-colors fallbacks, modal dismissal-key fix, and a bounded
   service-worker boot wait. See
   <https://github.com/mgifford/EchoLocate/pull/58>.
+- **Reliability pass** (PR #59): storage failures and the 500-card trim are
+  visible and announced, caption commits are serialized, and the service
+  worker returns a real 503 with a versioned cache and cleanup. See
+  <https://github.com/mgifford/EchoLocate/pull/59>.
 
 ## Next
 
@@ -89,16 +93,16 @@ no regression in lane announcement behaviour.
 
 ### N3. Reliability and storage honesty
 
-- [ ] Surface storage failures: `Storage.save` swallows quota errors while the
+- [x] Surface storage failures: `Storage.save` swallows quota errors while the
       footer always shows "Auto-saved ✓".
-- [ ] Make `CARD_LIMIT` (500) truncation visible; long sessions currently lose
+- [x] Make `CARD_LIMIT` (500) truncation visible; long sessions currently lose
       their start from VTT export with no warning.
 - [x] Bound the service-worker boot wait so a page without a controller still
       initializes TranscriptCtrl and every control (fixed with the a11y pass).
-- [ ] Service worker: return a real 503 when the network fails and the cache
+- [x] Service worker: return a real 503 when the network fails and the cache
       misses (today the fallback can resolve to `undefined`); version and clean
       the cache; do not pre-cache model weights.
-- [ ] Serialise caption commits so two finals in one `onresult` cannot
+- [x] Serialise caption commits so two finals in one `onresult` cannot
       interleave; keep a stable segment ordering.
 - [ ] Decide and document a CSP before workers/models are added (inline theme
       script, htmx, vendored modules today).
@@ -181,10 +185,6 @@ history, and no reference points at a file that does not exist.
 
 ## Known defects still open (2026-11 review)
 
-- Storage quota silently ignored; "Auto-saved ✓" is unconditional.
-- `CARD_LIMIT` truncation not surfaced.
-- Service-worker offline fallback can resolve to `undefined`; cache is never
-  versioned or cleaned.
 - No CI workflow; only manual checks in AGENTS.md.
 - Chrome ≤149 detection is UA-version based and disables speaker analysis
   entirely.
