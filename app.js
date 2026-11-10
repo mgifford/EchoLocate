@@ -471,6 +471,334 @@ async function refreshCapabilities(options) {
   return snapshot;
 }
 
+// ── Model management and consent ─────────────────────────────────────────────
+// A model is installable only after its exact revision has been approved and
+// every artifact matches the pinned SHA-256.  Cache Storage holds the bytes;
+// localStorage holds consent and install metadata.  Transcripts are stored
+// separately and are never touched by model removal.
+const MODEL_MANIFEST_URL = 'models/manifest.json';
+const MODEL_CACHE_NAME = 'echolocate-models-v1';
+const MODEL_CONSENT_KEY = 'echolocate_model_consent_v1';
+const MODEL_META_KEY = 'echolocate_model_meta_v1';
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';
+  if (bytes < 1000) return `${bytes} B`;
+  const units = ['kB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let index = -1;
+  do {
+    value /= 1000;
+    index += 1;
+  } while (value >= 1000 && index < units.length - 1);
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function validateModelManifest(raw) {
+  const errors = [];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, errors: ['Manifest must be an object'], manifest: null };
+  }
+  if (raw.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  if (!Array.isArray(raw.models)) errors.push('models must be an array');
+  const models = Array.isArray(raw.models) ? raw.models : [];
+  const ids = new Set();
+
+  models.forEach((model, index) => {
+    const at = `models[${index}]`;
+    if (!model || typeof model !== 'object') {
+      errors.push(`${at} must be an object`);
+      return;
+    }
+    if (!/^[a-z0-9][a-z0-9._-]{1,63}$/.test(String(model.id || ''))) {
+      errors.push(`${at}.id must be a lowercase slug`);
+    } else if (ids.has(model.id)) {
+      errors.push(`${at}.id is duplicated`);
+    } else {
+      ids.add(model.id);
+    }
+    if (!['speech-to-text', 'speaker-segmentation', 'speaker-embeddings'].includes(model.role)) {
+      errors.push(`${at}.role is invalid`);
+    }
+    if (!/^https:\/\//.test(String(model.sourceUrl || ''))) {
+      errors.push(`${at}.sourceUrl must be https`);
+    }
+    if (!model.revision || /^(main|master|latest)$|VERIFY|PLACEHOLDER|TODO/i.test(String(model.revision))) {
+      errors.push(`${at}.revision must be pinned to an exact revision`);
+    }
+    if (!model.license) errors.push(`${at}.license is required`);
+    if (!Number.isInteger(model.declaredBytes) || model.declaredBytes <= 0) {
+      errors.push(`${at}.declaredBytes must be a positive integer`);
+    }
+    if (!Array.isArray(model.artifacts) || !model.artifacts.length) {
+      errors.push(`${at}.artifacts must be a non-empty array`);
+    } else {
+      model.artifacts.forEach((artifact, artifactIndex) => {
+        const artifactAt = `${at}.artifacts[${artifactIndex}]`;
+        if (!artifact || typeof artifact !== 'object') {
+          errors.push(`${artifactAt} must be an object`);
+          return;
+        }
+        if (!artifact.path || artifact.path.startsWith('/') || artifact.path.includes('..')) {
+          errors.push(`${artifactAt}.path must be a relative path without ..`);
+        }
+        if (!/^[a-f0-9]{64}$/i.test(String(artifact.sha256 || ''))) {
+          errors.push(`${artifactAt}.sha256 must be 64 hex characters`);
+        }
+        if (!Number.isInteger(artifact.bytes) || artifact.bytes <= 0) {
+          errors.push(`${artifactAt}.bytes must be a positive integer`);
+        }
+      });
+    }
+  });
+
+  return { ok: errors.length === 0, errors, manifest: errors.length === 0 ? raw : null };
+}
+
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function modelArtifactUrl(model, artifact) {
+  const base = String(model.sourceUrl).endsWith('/') ? model.sourceUrl : `${model.sourceUrl}/`;
+  return new URL(String(artifact.path).replace(/^\/+/, ''), base).href;
+}
+
+const ModelManager = {
+  _manifest: null,
+  _consent: null,
+  _meta: null,
+
+  _ensureLoaded() {
+    if (this._consent && this._meta) return;
+    const read = (key) => {
+      try {
+        const value = JSON.parse(localStorage.getItem(key) || '{}');
+        return value && typeof value === 'object' ? value : {};
+      } catch {
+        return {};
+      }
+    };
+    this._consent = read(MODEL_CONSENT_KEY);
+    this._meta = read(MODEL_META_KEY);
+  },
+
+  _write(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async loadManifest({ fetchImpl = fetch, url = MODEL_MANIFEST_URL } = {}) {
+    const response = await fetchImpl(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Model manifest request failed (${response.status})`);
+    const result = validateModelManifest(await response.json());
+    if (!result.ok) throw new Error(`Invalid model manifest: ${result.errors.join('; ')}`);
+    this._manifest = result.manifest;
+    return result.manifest;
+  },
+
+  models() {
+    return this._manifest && Array.isArray(this._manifest.models) ? this._manifest.models : [];
+  },
+
+  get(id) {
+    return this.models().find((model) => model.id === id) || null;
+  },
+
+  consentKey(model) {
+    return `${model.id}@${model.revision}`;
+  },
+
+  isApproved(model) {
+    this._ensureLoaded();
+    return this._consent[this.consentKey(model)] === true;
+  },
+
+  approve(model) {
+    this._ensureLoaded();
+    this._consent[this.consentKey(model)] = true;
+    return this._write(MODEL_CONSENT_KEY, this._consent);
+  },
+
+  revoke(model) {
+    this._ensureLoaded();
+    delete this._consent[this.consentKey(model)];
+    return this._write(MODEL_CONSENT_KEY, this._consent);
+  },
+
+  isInstalled(model) {
+    this._ensureLoaded();
+    const entry = this._meta[model.id];
+    return !!(
+      entry
+      && entry.revision === model.revision
+      && Array.isArray(entry.artifacts)
+      && entry.artifacts.length === model.artifacts.length
+    );
+  },
+
+  async estimate() {
+    try {
+      if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+        return await navigator.storage.estimate();
+      }
+    } catch {
+      // Storage estimates are advisory; the download path still handles errors.
+    }
+    return null;
+  },
+
+  async install(model, { signal = null, onProgress = null } = {}) {
+    if (!model || !model.id) throw new Error('Unknown model');
+    const known = this.get(model.id);
+    if (!known || known.revision !== model.revision) {
+      throw new Error('Model is not in the trusted manifest');
+    }
+    if (!this.isApproved(model)) throw new Error('Model consent required');
+
+    this._ensureLoaded();
+    if (this.isInstalled(model)) {
+      return { installed: true, cached: true, bytes: this._meta[model.id].bytes || model.declaredBytes };
+    }
+
+    const estimate = await this.estimate();
+    if (estimate && Number.isFinite(estimate.quota) && Number.isFinite(estimate.usage)) {
+      const free = estimate.quota - estimate.usage;
+      if (free < Math.ceil(model.declaredBytes * 1.1)) {
+        throw new Error('Not enough storage for this model');
+      }
+    }
+
+    const cache = await caches.open(MODEL_CACHE_NAME);
+    const artifacts = [];
+    let totalBytes = 0;
+    try {
+      for (const artifact of model.artifacts) {
+        if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const result = await this._downloadArtifact(model, artifact, { cache, signal, onProgress });
+        artifacts.push(result);
+        totalBytes += result.bytes;
+      }
+    } catch (err) {
+      await this._purgeArtifacts(model, cache, artifacts);
+      throw err;
+    }
+
+    this._meta[model.id] = {
+      revision: model.revision,
+      installedAt: new Date().toISOString(),
+      bytes: totalBytes,
+      artifacts,
+    };
+    if (!this._write(MODEL_META_KEY, this._meta)) {
+      await this._purgeArtifacts(model, cache, artifacts);
+      throw new Error('Could not record the installed model');
+    }
+    return { installed: true, cached: false, bytes: totalBytes };
+  },
+
+  async _downloadArtifact(model, artifact, { cache, signal, onProgress }) {
+    const url = modelArtifactUrl(model, artifact);
+    const response = await fetch(url, { signal, cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Model download failed (${response.status}) for ${artifact.path}`);
+    }
+
+    const declaredLength = Number(response.headers.get('content-length'));
+    const total = Number.isFinite(declaredLength) && declaredLength > 0 ? declaredLength : artifact.bytes;
+    let loaded = 0;
+    const chunks = [];
+
+    if (response.body && typeof response.body.getReader === 'function') {
+      const reader = response.body.getReader();
+      while (true) {
+        if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.byteLength;
+        if (onProgress) onProgress({ modelId: model.id, artifact: artifact.path, loaded, total });
+      }
+    } else {
+      const buffer = new Uint8Array(await response.arrayBuffer());
+      chunks.push(buffer);
+      loaded = buffer.byteLength;
+      if (onProgress) onProgress({ modelId: model.id, artifact: artifact.path, loaded, total });
+    }
+
+    const bytes = new Uint8Array(loaded);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+
+    const digest = await sha256Hex(bytes);
+    if (digest !== String(artifact.sha256).toLowerCase()) {
+      throw new Error(`Integrity check failed for ${artifact.path}`);
+    }
+
+    await cache.put(
+      new Request(url),
+      new Response(bytes, { headers: { 'Content-Type': 'application/octet-stream' } }),
+    );
+    return { path: artifact.path, url, sha256: digest, bytes: loaded };
+  },
+
+  async _purgeArtifacts(model, cache, artifacts = null) {
+    const list = artifacts
+      || (this._meta[model.id] && this._meta[model.id].artifacts)
+      || model.artifacts
+      || [];
+    for (const artifact of list) {
+      try {
+        const url = artifact.url || modelArtifactUrl(model, artifact);
+        await cache.delete(new Request(url));
+      } catch {
+        // Best effort; the metadata is removed below.
+      }
+    }
+  },
+
+  async remove(model) {
+    this._ensureLoaded();
+    let cache = null;
+    try {
+      cache = await caches.open(MODEL_CACHE_NAME);
+    } catch {
+      // Cache Storage unavailable; metadata and consent are still removed.
+    }
+    if (cache) await this._purgeArtifacts(model, cache);
+    delete this._meta[model.id];
+    this._write(MODEL_META_KEY, this._meta);
+    this.revoke(model);
+    return true;
+  },
+
+  async verify(model) {
+    this._ensureLoaded();
+    const entry = this._meta[model.id];
+    if (!entry || entry.revision !== model.revision) return false;
+    try {
+      const cache = await caches.open(MODEL_CACHE_NAME);
+      for (const artifact of entry.artifacts) {
+        const response = await cache.match(new Request(artifact.url));
+        if (!response) return false;
+        const digest = await sha256Hex(await response.arrayBuffer());
+        if (digest !== String(artifact.sha256).toLowerCase()) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
 const State = {
   isRunning:                 false,
   pitchHistory:              [],
@@ -1969,6 +2297,188 @@ async function initEngineControl() {
   }
 
   await updateEngineStatus();
+}
+
+// ── Local model consent UI ───────────────────────────────────────────────────
+let pendingModel = null;
+let modelAbortController = null;
+let modelUiBound = false;
+
+function appendModelDetail(body, text) {
+  const p = document.createElement('p');
+  p.textContent = text;
+  body.appendChild(p);
+}
+
+function openModelConsent(model) {
+  const dialog = document.getElementById('model-consent-dialog');
+  const body = document.getElementById('model-consent-body');
+  if (!dialog || !body) return;
+  pendingModel = model;
+
+  body.textContent = '';
+  appendModelDetail(body, `${model.displayName || model.id} will be downloaded and stored in this browser.`);
+  const details = document.createElement('ul');
+  for (const line of [
+    `Size: ${formatBytes(model.declaredBytes)}`,
+    `License: ${model.license}`,
+    `Revision: ${model.revision}`,
+    `Source: ${model.sourceUrl}`,
+    `Role: ${model.role}`,
+  ]) {
+    const item = document.createElement('li');
+    item.textContent = line;
+    details.appendChild(item);
+  }
+  body.appendChild(details);
+  appendModelDetail(body, 'EchoLocate verifies every file against a pinned SHA-256 before use. Nothing is downloaded until you press Install model. You can remove the model later; transcripts are not affected.');
+
+  if (!dialog.open) dialog.showModal();
+  const approve = document.getElementById('model-consent-approve');
+  if (approve) approve.focus();
+}
+
+function renderModelList(models, message = '') {
+  const list = document.getElementById('model-list');
+  const status = document.getElementById('model-status');
+  if (!list) return;
+  list.textContent = '';
+
+  if (!models.length) {
+    if (status) status.textContent = message || 'No local models are available in this build.';
+    return;
+  }
+
+  for (const model of models) {
+    const installed = ModelManager.isInstalled(model);
+    const row = document.createElement('article');
+    row.className = 'model-row';
+
+    const title = document.createElement('h3');
+    title.textContent = model.displayName || model.id;
+
+    const meta = document.createElement('p');
+    meta.className = 'model-meta';
+    meta.textContent = `${model.role} · ${model.license} · ${formatBytes(model.declaredBytes)} · revision ${model.revision}`;
+
+    const source = document.createElement('p');
+    source.className = 'model-source';
+    source.textContent = model.sourceUrl;
+
+    const actions = document.createElement('div');
+    actions.className = 'model-actions';
+
+    const installBtn = document.createElement('button');
+    installBtn.type = 'button';
+    installBtn.className = 'btn btn-secondary';
+    installBtn.textContent = installed ? 'Installed' : 'Review and install';
+    installBtn.disabled = installed;
+    installBtn.addEventListener('click', () => openModelConsent(model));
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-danger';
+    removeBtn.textContent = 'Remove';
+    removeBtn.disabled = !installed;
+    removeBtn.addEventListener('click', () => removeLocalModel(model));
+
+    actions.append(installBtn, removeBtn);
+    row.append(title, meta, source, actions);
+    list.appendChild(row);
+  }
+
+  if (status) status.textContent = message;
+}
+
+async function installLocalModel(model) {
+  const status = document.getElementById('model-status');
+  const cancelBtn = document.getElementById('model-cancel');
+  if (modelAbortController) return;
+
+  modelAbortController = new AbortController();
+  if (cancelBtn) {
+    cancelBtn.hidden = false;
+    cancelBtn.disabled = false;
+  }
+  if (status) status.textContent = 'Starting download…';
+
+  let message;
+  try {
+    const result = await ModelManager.install(model, {
+      signal: modelAbortController.signal,
+      onProgress: ({ artifact, loaded, total }) => {
+        if (!status) return;
+        const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+        status.textContent = `Downloading ${artifact} — ${pct}%`;
+      },
+    });
+    message = result.cached ? 'Model already installed.' : 'Model installed and verified.';
+  } catch (err) {
+    message = err.name === 'AbortError'
+      ? 'Model download cancelled.'
+      : `Model install failed: ${err.message}`;
+  } finally {
+    modelAbortController = null;
+    if (cancelBtn) cancelBtn.hidden = true;
+  }
+
+  renderModelList(ModelManager.models(), message);
+}
+
+async function removeLocalModel(model) {
+  const status = document.getElementById('model-status');
+  if (status) status.textContent = 'Removing model…';
+  try {
+    await ModelManager.remove(model);
+    renderModelList(ModelManager.models(), 'Model removed. Transcripts were not changed.');
+  } catch (err) {
+    if (status) status.textContent = `Could not remove model: ${err.message}`;
+  }
+}
+
+async function initModelControls() {
+  const list = document.getElementById('model-list');
+  const status = document.getElementById('model-status');
+  if (!list) return;
+
+  if (!modelUiBound) {
+    modelUiBound = true;
+    const dialog = document.getElementById('model-consent-dialog');
+    const approve = document.getElementById('model-consent-approve');
+    const cancel = document.getElementById('model-consent-cancel');
+    const downloadCancel = document.getElementById('model-cancel');
+
+    if (approve) {
+      approve.addEventListener('click', () => {
+        const model = pendingModel;
+        if (!model) return;
+        ModelManager.approve(model);
+        pendingModel = null;
+        if (dialog) dialog.close();
+        installLocalModel(model);
+      });
+    }
+    if (cancel) {
+      cancel.addEventListener('click', () => {
+        pendingModel = null;
+        if (dialog) dialog.close();
+      });
+    }
+    if (dialog) dialog.addEventListener('close', () => { pendingModel = null; });
+    if (downloadCancel) {
+      downloadCancel.addEventListener('click', () => {
+        if (modelAbortController) modelAbortController.abort();
+      });
+    }
+  }
+
+  try {
+    await ModelManager.loadManifest();
+  } catch (err) {
+    if (status) status.textContent = `Local model list unavailable: ${err.message}`;
+    return;
+  }
+  renderModelList(ModelManager.models());
 }
 
 function applyView(view) {
@@ -4328,6 +4838,10 @@ function initNavOptions() {
   function openPanel() {
     panel.removeAttribute('hidden');
     toggleBtn.setAttribute('aria-expanded', 'true');
+    if (!panel.dataset.modelsLoaded) {
+      panel.dataset.modelsLoaded = '1';
+      initModelControls().catch((err) => console.warn('[EchoLocate] Model list failed:', err.message));
+    }
   }
 
   function closePanel() {

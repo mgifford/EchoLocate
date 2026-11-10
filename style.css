@@ -1290,6 +1290,48 @@ body {
   min-width: 190px;
 }
 
+/* Local model list in the Options panel */
+.model-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.model-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-lane);
+}
+
+.model-row h3 {
+  margin: 0 0 0.15rem;
+  font-size: 0.85rem;
+}
+
+.model-meta,
+.model-source {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.model-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
 #btn-stereo[disabled] {
   opacity: 0.25;
 }

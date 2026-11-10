@@ -30,10 +30,14 @@ Current runtime:
 - **Service worker:** `echolocate-v2` cache, cleanup of old caches, a real 503
   on an offline cache miss, and no caching of `models/`, `onnx-runtime/` or
   `.onnx`/`.safetensors`/`.bin` files.
+- **Models:** `models/manifest.json` (empty in this build), exact-revision
+  consent, SHA-256 verification, progress/cancel, storage refusal, Cache
+  Storage install and removal that leaves transcripts untouched. No model
+  weights ship; the Chrome Translator download is still to be inventoried.
 - **Accessibility:** Label in Name fixes, one interim live region, non-modal
   translation popup with focus return, reopenable privacy notice, forced-colors
   fallbacks, and a bounded service-worker boot wait.
-- **Tests:** 326 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
+- **Tests:** 339 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
   is no CI workflow yet.
 
 ## Historical problem statement (original review, still useful context)

@@ -19,13 +19,19 @@ The `SpeechAdapter` contract and a local-only capability snapshot (Web Speech,
 on-device, WebGPU adapter, WASM, storage) shipped in PR #61. Still to do:
 replacing the Chrome ≤149 UA gate after device testing.
 
-## PR 2: Explicit model management and consent — **next**
+## PR 2: Explicit model management and consent — **done (infrastructure)**
 - Add pinned, validated model manifest; separate download approvals; size/license/source/revision disclosure.
 - Add progress, cancellation, retry, cache versioning, integrity checks, deletion and storage fallbacks.
 - Tests must intercept network and assert **zero model-weight requests until consent**.
 - Inventory the existing Chrome Translator model download (opt-in translation)
   and scope "no downloads until consent" to app-managed weights.
 - Acceptance: user can refuse and continue existing path; model removal never deletes transcript.
+
+**Status (2026-11-10):** manifest, exact-revision consent, SHA-256 verification,
+progress/cancel, storage refusal, Cache Storage install/removal and the consent
+dialog are implemented. No installable model ships yet; the first entry arrives
+with the engine that consumes it. The Chrome Translator download still needs to
+be inventoried in the consent work.
 
 ## PR 3: WebGPU local speech adapter — **planned**
 - Integrate selected Whisper Web-inspired local ASR (consider Whisper vs Parakeet). Worker inference, buffering, chunking/partials/finals, timestamps, disposal.
