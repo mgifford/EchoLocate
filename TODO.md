@@ -36,9 +36,10 @@ Related material:
   visible and announced, caption commits are serialized, and the service
   worker returns a real 503 with a versioned cache and cleanup. See
   <https://github.com/mgifford/EchoLocate/pull/59>.
-- **SpeechAdapter + capabilities** (this PR): both engines expose the same
+- **SpeechAdapter + capabilities** (PR #61): both engines expose the same
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
+  See <https://github.com/mgifford/EchoLocate/pull/61>.
 - **Planning pack reconciliation** (PR #60): the pack is versioned at the
   repository root, its baseline matches the current app, its synthetic fixtures
   are confirmed present and referenced, contracts are annotated as
