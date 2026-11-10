@@ -293,6 +293,7 @@
     <!-- Single polite live region for in-progress speech. Final cards are
          announced by the lane/chat role="log" containers. -->
     <span id="interim-live" class="sr-only" role="status" aria-live="polite"></span>
+    <span id="autosave-live" class="sr-only" role="status" aria-live="polite"></span>
 
     <aside id="debug-overlay" class="debug-overlay hidden" aria-live="polite" aria-label="Pitch centroid debug overlay">
       <div class="debug-head">
@@ -340,7 +341,7 @@
       <span id="mic-info" class="mic-info">Voice split: tone profile only</span>
       <span id="stereo-info" class="stereo-info hidden">Stereo experiment off</span>
       <span id="system-audio-info" class="system-audio-info hidden">💻 Computer audio: active</span>
-      <span class="autosave-note">Auto-saved ✓</span>
+      <span id="autosave-note" class="autosave-note">Auto-saved ✓</span>
     </div>
 
     <div class="footer-community" role="note">
@@ -350,6 +351,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-3"></script>
+  <script src="app.js?v=20261110-4"></script>
 </body>
 </html>

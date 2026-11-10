@@ -9,6 +9,7 @@
 
 const CFG = Object.freeze({
   STORAGE_KEY:        'echolocate_v1',
+  STORAGE_META_KEY:   'echolocate_storage_meta',
   PITCH_WINDOW:       24,
   PITCH_HZ:           8,
   WATCHDOG_MS:        10_000,
@@ -351,6 +352,8 @@ const State = {
   matchHistory:              [],
   nextSpeakerNum:            1,
   nextSegmentNum:            1,
+  storageHadError:           false,
+  storageTruncationAnnounced: false,
   micDiagnostics:            null,
   stereoEnabled:             false,
   stereoAnalyserL:           null,
@@ -1453,7 +1456,12 @@ async function mergeProfiles(fromId, intoId) {
       speakerColor: target.color,
     };
   });
-  Storage.replaceAll(cards);
+  const saved = Storage.replaceAll(cards);
+  updateStorageStatus(saved);
+  if (!saved) {
+    setStatus('error', 'Merge not saved — storage is full');
+    return;
+  }
   removeSpeakerTranslationPref(fromId);
 
   document.getElementById('lanes-container').innerHTML = '';
@@ -2415,44 +2423,138 @@ function flushUtteranceMetrics() {
 }
 
 const Storage = {
+  lastTruncated: false,
+
   _load() {
     try {
-      return JSON.parse(localStorage.getItem(CFG.STORAGE_KEY) || '{"cards":[]}');
+      const parsed = JSON.parse(localStorage.getItem(CFG.STORAGE_KEY) || '{"cards":[]}');
+      return parsed && Array.isArray(parsed.cards) ? parsed : { cards: [] };
     } catch {
       return { cards: [] };
     }
   },
 
+  _loadMeta() {
+    try {
+      const meta = JSON.parse(localStorage.getItem(CFG.STORAGE_META_KEY) || '{}');
+      return meta && typeof meta === 'object' ? meta : {};
+    } catch {
+      return {};
+    }
+  },
+
+  _saveMeta(meta) {
+    try {
+      localStorage.setItem(CFG.STORAGE_META_KEY, JSON.stringify(meta));
+    } catch {
+      // A failed meta write must not break caption storage; the in-memory
+      // lastTruncated flag still surfaces the warning for this session.
+    }
+  },
+
+  _markTruncated() {
+    this.lastTruncated = true;
+    const meta = this._loadMeta();
+    if (!meta.truncated) {
+      this._saveMeta({ ...meta, truncated: true, truncatedAt: new Date().toISOString() });
+    }
+  },
+
+  // Returns false when the browser refused the write (usually a full quota).
+  // Callers surface that in the footer and the live region.
   save(card) {
     const data = this._load();
     data.cards.push(card);
+    let truncated = false;
     if (data.cards.length > CFG.CARD_LIMIT) {
       data.cards = data.cards.slice(-CFG.CARD_LIMIT);
+      truncated = true;
     }
     try {
       localStorage.setItem(CFG.STORAGE_KEY, JSON.stringify(data));
     } catch {
-      // Ignore storage quota errors.
+      return false;
     }
+    if (truncated) this._markTruncated();
+    return true;
   },
 
   replaceAll(cards) {
-    const normalized = Array.isArray(cards) ? cards.slice(-CFG.CARD_LIMIT) : [];
+    const source = Array.isArray(cards) ? cards : [];
+    const normalized = source.slice(-CFG.CARD_LIMIT);
+    const truncated = source.length > CFG.CARD_LIMIT;
     try {
       localStorage.setItem(CFG.STORAGE_KEY, JSON.stringify({ cards: normalized }));
     } catch {
-      // Ignore storage quota errors.
+      return false;
     }
+    if (truncated) this._markTruncated();
+    return true;
   },
 
   clear() {
-    localStorage.removeItem(CFG.STORAGE_KEY);
+    try {
+      localStorage.removeItem(CFG.STORAGE_KEY);
+      localStorage.removeItem(CFG.STORAGE_META_KEY);
+      this.lastTruncated = false;
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   allCards() {
     return this._load().cards;
   },
+
+  meta() {
+    const meta = this._loadMeta();
+    return { ...meta, truncated: !!(meta.truncated || this.lastTruncated) };
+  },
 };
+
+/**
+ * Reflect storage health in the footer and announce failures/truncation once.
+ * The visible note lives in the aria-hidden footer meta; #autosave-live is the
+ * accessible channel so a failed save is never silent.
+ */
+function updateStorageStatus(ok = true) {
+  const note = document.getElementById('autosave-note');
+  const live = document.getElementById('autosave-live');
+  const meta = Storage.meta();
+  let text = 'Auto-saved ✓';
+  let cls = 'autosave-note';
+  let announce = '';
+
+  if (!ok) {
+    text = 'Not saved — storage full';
+    cls += ' is-error';
+    announce = 'This caption was not saved: browser storage is full. Use Copy Chat or Save Chat to export the transcript now.';
+    State.storageHadError = true;
+  } else if (meta.truncated) {
+    text = 'Auto-saved ✓ — older cards trimmed';
+    cls += ' is-warning';
+    if (!State.storageTruncationAnnounced) {
+      announce = 'Older captions were removed at the 500-card storage limit. Export the transcript to keep what remains.';
+      State.storageTruncationAnnounced = true;
+    }
+    State.storageHadError = false;
+  } else if (State.storageHadError) {
+    announce = 'Captions are being saved again.';
+    State.storageHadError = false;
+  }
+
+  if (note) {
+    note.textContent = text;
+    note.className = cls;
+  }
+  if (live) {
+    if (announce) live.textContent = announce;
+    // Do not leave a resolved quota/trim warning in the live region: it would
+    // still be read when navigating the page after the problem is gone.
+    else if (ok && !meta.truncated && !State.storageHadError) live.textContent = '';
+  }
+}
 
 async function postCard(cardData) {
   if (!window.htmx) {
@@ -2530,6 +2632,7 @@ const TranscriptCtrl = {
   _srLiveEl: null,
   _interimCardEl: null,
   _interimProfile: null,
+  _commitQueue: Promise.resolve(),
 
   init() {
     this._liveEl = document.getElementById('live-transcript');
@@ -2618,17 +2721,32 @@ const TranscriptCtrl = {
     this.showInterim('');
   },
 
-  async commitCard(text, confidence) {
-    const now = Date.now();
-    const startedAt = State.currentUtteranceStartedAt || (now - 1500);
+  commitCard(text, confidence) {
+    // Capture this utterance's clock and voice metrics at event time, before
+    // any await, so queued finals cannot mix samples or lose their start time.
+    const startedAt = State.currentUtteranceStartedAt || (Date.now() - 1500);
     State.currentUtteranceStartedAt = null;
-
-    const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance, micEnergy, sysEnergy, audioSource } = flushUtteranceMetrics();
+    const metrics = flushUtteranceMetrics();
 
     // Restart sampling immediately: this utterance's metrics are already
     // captured, and waiting for rendering or translation would silently drop
     // the first samples of the next speaker.
     if (State.isRunning) startPitchSampling();
+    this.clearInterim();
+
+    // Serialize rendering and storage so two finals in one onresult cannot
+    // interleave cards, storage writes or translation patches.
+    this._commitQueue = this._commitQueue
+      .then(() => this._commitCardNow(text, confidence, metrics, startedAt))
+      .catch((err) => {
+        console.warn('[EchoLocate] Caption commit failed:', err.message);
+      });
+    return this._commitQueue;
+  },
+
+  async _commitCardNow(text, confidence, metrics, startedAt) {
+    const now = Date.now();
+    const { centroid, tone, signature, signatureStats, leftEnergy, rightEnergy, balance, micEnergy, sysEnergy, audioSource } = metrics;
 
     const match = resolveSpeakerProfile({ centroid, tone, signature, signatureStats });
     const profile = match.profile;
@@ -2688,8 +2806,6 @@ const TranscriptCtrl = {
       balance,
     });
 
-    this.clearInterim();
-
     // Captions render before any optional translation work.  Translation is a
     // progressive enhancement: it must never delay the caption, its storage, or
     // the next utterance (Chrome may download a translation model on first use).
@@ -2699,7 +2815,7 @@ const TranscriptCtrl = {
     } catch (err) {
       console.warn('[EchoLocate] Chat message render failed — card was still saved:', err.message);
     }
-    Storage.save(cardData);
+    updateStorageStatus(Storage.save(cardData));
     updateCardCount();
     updateEmptyStage();
 
@@ -2721,7 +2837,7 @@ const TranscriptCtrl = {
         const cards = Storage.allCards().map((card) => (
           card.segmentId === updated.segmentId ? { ...card, ...updated } : card
         ));
-        Storage.replaceAll(cards);
+        updateStorageStatus(Storage.replaceAll(cards));
         renderCardTranslations(updated);
       })
       .catch((err) => {
@@ -4142,12 +4258,20 @@ function initControls() {
     const confirmed = window.confirm('Clear locally saved discussion from this browser? This cannot be undone.');
     if (!confirmed) return;
 
+    const cleared = Storage.clear();
+    if (!cleared) {
+      setStatus('error', 'Could not clear local storage');
+      return;
+    }
+    State.storageHadError = false;
+    State.storageTruncationAnnounced = false;
+    updateStorageStatus(true);
+
     document.getElementById('lanes-container').innerHTML = '';
     const chatFeed = document.getElementById('chat-feed');
     if (chatFeed) chatFeed.innerHTML = '';
     document.getElementById('speaker-indicator').textContent = '';
     TranscriptCtrl.clearInterim();
-    Storage.clear();
     State.profiles = [];
     State.unknownProfile = null;
     State.activeSpeakerId = null;
@@ -4304,6 +4428,7 @@ async function boot() {
   if (hasSpeech) SpeechEngine.init();
   initControls();
   refreshMergeControls();
+  updateStorageStatus(true);
   updateMicInfoText();
   updateSystemAudioUI();
   updateDebugUI();

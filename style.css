@@ -1299,6 +1299,16 @@ body {
   font-size: 0.65rem;
 }
 
+.autosave-note.is-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.autosave-note.is-warning {
+  color: var(--warning-text);
+  font-weight: 700;
+}
+
 .footer-community {
   padding: 0.2rem 1.5rem 0.45rem;
   font-size: 0.74rem;
