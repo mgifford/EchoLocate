@@ -1,0 +1,11 @@
+{
+  "description": "A fourth distinct speaker arrives when cap is 3.",
+  "maxSpeakers": 3,
+  "established": [
+    "speaker-1",
+    "speaker-2",
+    "speaker-3"
+  ],
+  "newVoiceExpected": "Unknown",
+  "neverForceAssign": true
+}

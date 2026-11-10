@@ -1,0 +1,35 @@
+{
+  "description": "Diarization result arrives late; user correction must remain authoritative.",
+  "events": [
+    {
+      "kind": "asr-final",
+      "segmentId": "seg-1",
+      "revision": 1,
+      "speakerIds": []
+    },
+    {
+      "kind": "user-correction",
+      "segmentId": "seg-1",
+      "revision": 2,
+      "speakerIds": [
+        "speaker-2"
+      ]
+    },
+    {
+      "kind": "diarization",
+      "segmentId": "seg-1",
+      "revision": 1,
+      "speakerIds": [
+        "speaker-1"
+      ]
+    }
+  ],
+  "expected": {
+    "segmentId": "seg-1",
+    "revision": 2,
+    "speakerIds": [
+      "speaker-2"
+    ],
+    "correctedByUser": true
+  }
+}

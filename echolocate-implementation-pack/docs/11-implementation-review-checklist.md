@@ -1,0 +1,24 @@
+# Implementation review checklist
+
+- [ ] Source updated from repository head; new upstream behavior reconciled
+- [ ] Baseline tests run; failures preserved and documented
+- [ ] Model and dependency licenses verified for pinned revisions
+- [ ] Model manifest includes exact sizes and cryptographic hashes, not placeholders
+- [ ] No mandatory weight download on page load
+- [ ] STT and diarization settings independent
+- [ ] Explicit consent for local downloads and for cloud fallback
+- [ ] Browser capability detection tests actual support and initialization
+- [ ] WebGPU worker starts and stops correctly, memory bounded
+- [ ] WASM fallback and browser-recognition paths tested
+- [ ] ASR results and diarization turns share a monotonic timeline
+- [ ] Returning speakers remain stable; unknown and overlap supported
+- [ ] Profile updates gated against poor-quality/ambiguous samples
+- [ ] User corrections cannot be overwritten by late automatic results
+- [ ] Per-model delete, cache eviction recovery and offline semantics tested
+- [ ] Local-only network privacy tests pass
+- [ ] Accessibility/manual tests and multiple devices documented
+- [ ] DER/false merges/false splits/abstention and WER measured, not claimed
+- [ ] Resource use and sustainability observations reported with caveats
+- [ ] README claims about Google cloud Web Speech corrected
+- [ ] Export and restore preserve revised speaker assignments
+- [ ] Each PR documents changes, removals, deferrals and unresolved risks

@@ -1,0 +1,31 @@
+{
+  "description": "Speaker A returns after B and C; late segments should map to same stable ID. Event-level contract fixture, not audio.",
+  "turns": [
+    {
+      "startMs": 0,
+      "endMs": 9000,
+      "truth": "A"
+    },
+    {
+      "startMs": 9000,
+      "endMs": 20500,
+      "truth": "B"
+    },
+    {
+      "startMs": 20500,
+      "endMs": 33000,
+      "truth": "C"
+    },
+    {
+      "startMs": 33000,
+      "endMs": 48000,
+      "truth": "A"
+    }
+  ],
+  "expected": [
+    "stable-id-for-A",
+    "stable-id-for-B",
+    "stable-id-for-C",
+    "stable-id-for-A"
+  ]
+}

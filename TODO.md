@@ -13,8 +13,10 @@ Related material:
 - [AGENTS.md](AGENTS.md) — project rules and code-change checklist
 - [ACCESSIBILITY.md](ACCESSIBILITY.md) — conformance intent and manual test checklist
 - [STT_ADAPTER_MIGRATION_PLAN.md](STT_ADAPTER_MIGRATION_PLAN.md) — current adapter plan
-- Local, untracked planning inputs: `prompts/AGENT_BUILD_PROMPT.md` and
-  `echolocate-implementation-pack/` (decide whether either should live in the repo)
+- [Planning pack](echolocate-implementation-pack/README.md) and
+  [build prompt](prompts/AGENT_BUILD_PROMPT.md): now versioned in the repo.
+  Status against the roadmap is tracked in
+  [12-implementation-status.md](echolocate-implementation-pack/docs/12-implementation-status.md).
 
 ## Recently shipped
 
@@ -34,6 +36,10 @@ Related material:
   visible and announced, caption commits are serialized, and the service
   worker returns a real 503 with a versioned cache and cleanup. See
   <https://github.com/mgifford/EchoLocate/pull/59>.
+- **Planning pack reconciliation** (this PR): the pack is versioned at the
+  repository root, its baseline matches the current app, its synthetic fixtures
+  are confirmed present and referenced, contracts are annotated as
+  illustrative, and the decisions/hosting constraints are recorded.
 
 ## Next
 
@@ -113,16 +119,17 @@ impossible.
 
 ### N4. Reconcile the planning pack with the app
 
-- [ ] Update the pack baseline: it omits translation, system audio, chat view,
+- [x] Update the pack baseline to cover translation, system audio, chat view,
       debug console, franc language detection, the device picker and the
       Chrome/Edge workarounds.
-- [ ] Add the missing `tests/fixtures/` or remove the references to it.
-- [ ] Convert or annotate `contracts/interfaces.ts`: the app is a classic
+- [x] Verify `tests/fixtures/` references: the five synthetic metadata fixtures
+      are present and the build prompt's reference is accurate.
+- [x] Convert or annotate `contracts/interfaces.ts`: the app is a classic
       script tested in a VM, not a TypeScript/ESM project.
-- [ ] Record hosting constraints: GitHub Pages cannot set COOP/COEP (no
+- [x] Record hosting constraints: GitHub Pages cannot set COOP/COEP (no
       `SharedArrayBuffer`/multi-threaded WASM) or custom headers.
-- [ ] Decide whether the pack is committed under `docs/planning/` or stays out
-      of the repository.
+- [x] Decide where the pack lives: committed at the repository root
+      (`echolocate-implementation-pack/`, `prompts/`), not under `docs/planning/`.
 
 Acceptance: an implementing agent can follow the pack without inventing
 history, and no reference points at a file that does not exist.
