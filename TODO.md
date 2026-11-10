@@ -36,10 +36,11 @@ Related material:
   visible and announced, caption commits are serialized, and the service
   worker returns a real 503 with a versioned cache and cleanup. See
   <https://github.com/mgifford/EchoLocate/pull/59>.
-- **Planning pack reconciliation** (this PR): the pack is versioned at the
+- **Planning pack reconciliation** (PR #60): the pack is versioned at the
   repository root, its baseline matches the current app, its synthetic fixtures
   are confirmed present and referenced, contracts are annotated as
-  illustrative, and the decisions/hosting constraints are recorded.
+  illustrative, and the decisions/hosting constraints are recorded. See
+  <https://github.com/mgifford/EchoLocate/pull/60>.
 
 ## Next
 
