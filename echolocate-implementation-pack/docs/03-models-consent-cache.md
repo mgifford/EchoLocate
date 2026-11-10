@@ -6,8 +6,8 @@
 > and are stored in Cache Storage; removal revokes consent and never touches
 > transcripts. The experimental `browser-local` engine asks the browser to
 > install a language pack only after a user action. Optional translation uses
-> Chrome's built-in Translator API, which may download a small model — include
-> that in the consent inventory. The service worker refuses to cache `models/`,
+> Chrome's built-in Translator API; it now requires per-language-pair consent
+> before `Translator.create`, and refusal leaves captions working. The service worker refuses to cache `models/`,
 > `onnx-runtime/` and ONNX artifacts.
 
 ## Candidates (must independently verify current cards and terms)
