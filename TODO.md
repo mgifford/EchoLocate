@@ -26,6 +26,9 @@ Related material:
 
 ## Recently shipped
 
+- **Local-first default** (this PR): first run recommends local Whisper instead
+  of silently using the browser cloud service; the cloud choice is explicit,
+  labelled and remembered. Adds provider metadata and `labs/providers.html`.
 - **Caption event seam** (PR #73): a pure `modules/caption-events.js` contract
   with stable IDs, sequence, revisions, speaker metadata and WebVTT from
   events; the app emits events alongside cards and `labs/events.html`

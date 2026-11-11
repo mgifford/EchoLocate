@@ -1475,6 +1475,10 @@ describe('chooseSpeechEngineForEnvironment', () => {
     assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'browser-service', preferLocal: true }), 'wasm-local');
   });
 
+  it('recommends local Whisper on a first run with browser speech', () => {
+    assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: null }), 'wasm-local');
+  });
+
   it('keeps the stored engine when a browser service is available', () => {
     assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'browser-local' }), 'browser-local');
     assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'wasm-local' }), 'wasm-local');

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Provider metadata lab — EchoLocate</title>
+  <link rel="stylesheet" href="events.css">
+</head>
+<body>
+  <header class="lab-header">
+    <p class="lab-back"><a href="../">EchoLocate</a> / lab</p>
+    <h1>Provider metadata lab</h1>
+    <p class="lab-badge">Local only · no network · no model · metadata</p>
+    <p>
+      This page loads only <code>modules/provider-metadata.js</code>. It makes
+      <strong>local</strong>, <strong>browser-managed</strong> and
+      <strong>cloud</strong> processing visible as data, not as a brand guess.
+    </p>
+  </header>
+
+  <main>
+    <section aria-labelledby="asr-heading">
+      <h2 id="asr-heading">Speech recognition providers</h2>
+      <div id="asr-providers" class="lab-lanes"></div>
+    </section>
+
+    <section aria-labelledby="translation-heading">
+      <h2 id="translation-heading">Translation providers</h2>
+      <div id="translation-providers" class="lab-lanes"></div>
+    </section>
+  </main>
+
+  <script src="../modules/provider-metadata.js"></script>
+  <script src="providers.js"></script>
+</body>
+</html>

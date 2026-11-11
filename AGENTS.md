@@ -11,9 +11,9 @@ Primary runtime pieces:
 - sw.js: local fragment rendering route for HTMX card insertion
 
 ## Current Product Behavior
-- Real-time transcription uses Web Speech API (Chrome/Edge family support)
-- Speech engine is selectable: browser speech service (default), Chrome's experimental on-device recognizer, or local Whisper (WASM) once its pinned model is installed; local Whisper runs ~5s chunks and is English-only in this build
-- Browsers without a usable browser speech service (notably Firefox) default to local Whisper, disable the unavailable service engines, show the model-setup panel and open install consent from Start; do not silently fall back to a broken service
+- Real-time transcription uses local Whisper (recommended) or the browser Web Speech API (explicit cloud choice); Chrome's on-device recognizer is a third option
+- Speech engine is selectable: local Whisper (WASM, recommended; English-only, ~5s chunks), browser speech service (explicit cloud choice), or Chrome's experimental on-device recognizer
+- Local Whisper is recommended on first run; the browser speech service is an explicit, labelled cloud choice and is remembered only after the user picks it. Browsers without a usable browser speech service (notably Firefox) are local-only, disable the unavailable service engines, show the model-setup panel and open install consent from Start; do not silently fall back to a broken service
 - Simulated speaker grouping uses pitch centroid heuristics (not true diarization)
 - Dynamic speaker lanes are created on demand and do not auto-hide
 - Maximum speaker profiles is capped at 6
@@ -47,7 +47,7 @@ Before committing, verify:
 3. New cards render in correct lane and include card-level match note
 4. Existing cards remain visible while new speakers are added
 5. Privacy notice text remains accurate and visible until dismissed
-6. Both engines show an accurate status; choosing an unavailable engine must not disable Start
+6. All engines show an accurate local/cloud status; choosing an unavailable engine must not disable Start
 7. Light and dark themes both remain readable
 8. Storage failures and the 500-card trim are visible and announced
 9. Local Whisper: install consent, SHA-256 verification, transcription and model removal still work; no audio leaves the browser
