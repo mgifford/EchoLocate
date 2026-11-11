@@ -3,8 +3,8 @@
 This is a **planning and experimental package**, not a completed implementation or a verified benchmark. It is intended to be copied into or reviewed against [mgifford/EchoLocate](https://github.com/mgifford/EchoLocate) on a feature branch.
 
 > **Status 2026-11-10:** reconciled with the repository after PRs #55, #57, #58,
-> #59, #61, #62, #63 and #64, plus model/translation consent, CSP and WASM
-> Whisper. See
+> #59, #61, #62, #63, #64, #65 and #66, plus model/translation consent, CSP,
+> CI and WASM Whisper. See
 > `docs/12-implementation-status.md` for what is shipped, partial or still
 > planned. The package is versioned in the repository so future agents do not
 > repeat stale baseline work.
