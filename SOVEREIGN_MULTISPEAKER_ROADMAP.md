@@ -264,7 +264,7 @@ Ordered by what most improves a **sovereign panel discussion** first.
 
 ### P0 — credible local panel
 
-- [ ] **Module seams and the caption-events lab.**
+- [x] **Module seams and the caption-events lab.**
   Extract the pure caption event model first: stable segment IDs, sequence,
   revision, source language, timing and optional speaker metadata. Render the
   existing lanes/chat/VTT from it and add `labs/events.html` with synthetic
@@ -273,6 +273,7 @@ Ordered by what most improves a **sovereign panel discussion** first.
     without `app.js`; contract tests cover interim/final/revision; the classic
     script architecture is preserved.
   - This is the smallest useful seam and the template for every later module.
+    Shipped in PR #73.
 
 - [ ] **Make local the recommended default everywhere.**
   On a clean profile, offer local Whisper setup and do not silently choose the

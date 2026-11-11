@@ -26,10 +26,11 @@ Related material:
 
 ## Recently shipped
 
-- **Caption event seam** (this PR): a pure `modules/caption-events.js` contract
+- **Caption event seam** (PR #73): a pure `modules/caption-events.js` contract
   with stable IDs, sequence, revisions, speaker metadata and WebVTT from
   events; the app emits events alongside cards and `labs/events.html`
-  demonstrates the model without `app.js`, a mic or a model.
+  demonstrates the model without `app.js`, a mic or a model. See
+  <https://github.com/mgifford/EchoLocate/pull/73>.
 - **CI foundation**: a `Tests` workflow runs syntax checks and the full suite
   on every push to `main` and every pull request. One branch per PR; merged
   branches are deleted automatically. See
