@@ -16,6 +16,9 @@ Related material:
 - [SOVEREIGN_MULTISPEAKER_ROADMAP.md](SOVEREIGN_MULTISPEAKER_ROADMAP.md) —
   prioritized TODO for panel diarization, local translation, digital
   sovereignty and optional conference mode (issues #67/#68)
+- [TECHNOLOGY.md](TECHNOLOGY.md) — inventory of runtime, ASR, diarization,
+  translation, presentation, transport, model and accessibility tech
+- [labs/README.md](labs/README.md) — standalone module demos and their contracts
 - [Planning pack](echolocate-implementation-pack/README.md) and
   [build prompt](prompts/AGENT_BUILD_PROMPT.md): now versioned in the repo.
   Status against the roadmap is tracked in

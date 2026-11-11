@@ -55,7 +55,9 @@ These are product requirements, not aspirations.
 7. **Offline after setup.** Once models are installed, the caption path should
    work without a network.
 8. **The UI states what is local and what is not.** Engine, translation provider,
-   model source and relay status must be visible and understandable.
+   model source and relay status must be visible and understandable. Providers
+   expose machine-readable `processing`/`network` metadata so this is not
+   hand-written per screen.
 9. **Export and deletion are first-class.** Users can export their transcript
    and remove models/data without an account.
 10. **No dark patterns.** A download, cloud call or share action is never
@@ -63,7 +65,93 @@ These are product requirements, not aspirations.
 
 Sovereignty is the property of the **default path**, not a settings toggle.
 
-## 3. What to learn from CAPTION.ninja
+## 3. Modularity and demonstrability
+
+Complexity is the main risk. Do not build one monolith and demonstrate it only
+at the end.
+
+### Rules
+
+1. Each capability is a module with a narrow contract and no DOM/UI assumptions.
+2. Every module has a **standalone demo** under `labs/` with synthetic fixtures.
+   A demo must work without a microphone or a model download by default.
+3. Composition is separate from the modules. `labs/pipeline.html` wires them
+   together; the main app is one composition, not the only one.
+4. Every ASR/translation/transport provider declares **sovereignty metadata**:
+   `processing` (`local`, `browser-managed`, `cloud`, `self-hosted`), `network`
+   (`none`, `model-download`, `streaming`), model source and licence. The UI and
+   tests read that metadata instead of guessing from a brand name.
+5. Optional modules may fail. Captions must continue without diarization,
+   translation, TTS, transport or an overlay.
+6. No mandatory backend. Transport and remote translation are adapters.
+7. One module per PR: contract tests, demo, short README. No feature without a
+   demo and a documented failure mode.
+8. Keep the classic-script architecture and Node `vm` tests. Do not introduce a
+   framework, bundler or build step just to look modular.
+9. Version the data contracts. Evaluate WebVTT/TTML before inventing a new
+   interchange format.
+10. Accessibility is part of each module contract, not a final polish layer.
+
+### Module map
+
+| Module | Contract | Standalone demo | Notes |
+|---|---|---|---|
+| Capture | `MediaStream` → audio frames | `labs/capture.html` | Mic/system audio; no network. |
+| ASR adapters | audio → `interim`/`final` events | `labs/asr.html` | Service, browser-managed on-device, local WASM. |
+| VAD / turns | frames → speech segments | `labs/vad.html` | Silero VAD is the likely local option. |
+| Diarization | segments/audio → speaker turns + confidence | `labs/diarization.html` | Meyda baseline; PyAnnote/WeSpeaker target. |
+| Caption events | append/revision/render model | `labs/events.html` | Pure; no DOM or network. |
+| Translation | text + pair → translated text | `labs/translation.html` | Original, Chrome, Bergamot, local model, optional remote. |
+| Transcript views | events → lanes/chat/reader | `labs/viewer.html` | Existing UI is one view. |
+| Audience/overlay | events → audience/overlay view | `labs/audience.html`, `labs/overlay.html` | Local first; relay later. |
+| Model registry | manifest/consent/cache | `labs/models.html` | Hash, licence, size, remove. |
+| Transport | events → subscribers | `labs/transport.html` | `BroadcastChannel` first; optional relay. |
+| Preferences | display/a11y settings | `labs/preferences.html` | Local storage; forced colours, RTL, zoom. |
+| Diagnostics | capability/sovereignty snapshot | `labs/diagnostics.html` | Explains local vs cloud vs unavailable. |
+
+### Demo lab
+
+- `labs/events.html` — synthetic captions, speaker revisions, interim/final,
+  render to lanes/chat/VTT. No network, no model.
+- `labs/asr.html` — mock transcript plus optional real local inference; shows
+  the sovereignty badge.
+- `labs/diarization.html` — a short sample WAV with synthetic turns; model
+  download optional.
+- `labs/translation.html` — sample sentences and a chosen pair; mock provider by
+  default, Bergamot/local when installed.
+- `labs/viewer.html` — accessible reader with history, pause-scroll, font and
+  contrast controls.
+- `labs/audience.html` — two windows over `BroadcastChannel`; no server.
+- `labs/overlay.html` — OBS-style overlay from events; no public room.
+- `labs/pipeline.html` — toggle each module on/off to show composition and
+  graceful degradation.
+
+Every lab must state **local / browser-managed / cloud / network required** in
+visible text and in an accessible status. Demos are part of CI where feasible;
+at minimum, module contracts and synthetic event fixtures are tested.
+
+### Documentation deliverables
+
+- `TECHNOLOGY.md` — the inventory of what is used, why, status, licence, limits
+  and demo.
+- `labs/README.md` — index, how to run each demo, what is mocked, what is real.
+- A README per module: purpose, contract, inputs/outputs, failure modes,
+  privacy boundary, tests, demo URL.
+- Keep `FEATURES.md`, `AGENTS.md` and `README.md` in sync when a module changes.
+- A text architecture diagram (and an accessible Mermaid version if used) that
+  shows modules and optional edges, not one giant pipeline.
+- A licence/provenance table for every model and every borrowed idea.
+- Record decisions in `TODO.md`; do not bury them in code comments.
+
+### Complexity budget
+
+- No new framework, bundler or backend for the core.
+- A module that cannot be demonstrated alone is not ready.
+- A module that fails must leave the transcript readable.
+- Do not add a second implementation of an existing module; replace or delete.
+- Delete experiments that are not promoted within a milestone.
+
+## 4. What to learn from CAPTION.ninja
 
 ### Adopt or adapt
 
@@ -92,7 +180,7 @@ Sovereignty is the property of the **default path**, not a settings toggle.
 - Code without respecting CAPTION.ninja's MPL-2.0 file-level obligations.
   EchoLocate is AGPL-3.0; ideas are reusable, code copying needs care.
 
-## 4. Prior art and references
+## 5. Prior art and references
 
 | Project | Licence | Why it matters |
 |---|---|---|
@@ -115,7 +203,7 @@ Sovereignty is the property of the **default path**, not a settings toggle.
 Licences and model terms must be re-checked before adding anything to
 `models/manifest.json`; model licences are separate from code licences.
 
-## 5. Issue #68 — assessment
+## 6. Issue #68 — assessment
 
 [Issue #68](https://github.com/mgifford/EchoLocate/issues/68) proposes a
 QR-based, multilingual conference mode. The direction is strong, but it is a
@@ -170,11 +258,21 @@ each reader choose without changing anyone else's view. If a local pair is
 missing, show the original with a clear explanation; do not call a remote
 provider silently.
 
-## 6. TODO
+## 7. TODO
 
 Ordered by what most improves a **sovereign panel discussion** first.
 
 ### P0 — credible local panel
+
+- [ ] **Module seams and the caption-events lab.**
+  Extract the pure caption event model first: stable segment IDs, sequence,
+  revision, source language, timing and optional speaker metadata. Render the
+  existing lanes/chat/VTT from it and add `labs/events.html` with synthetic
+  events. No microphone, model or network.
+  - Acceptance: existing transcription and VTT are unchanged; the demo runs
+    without `app.js`; contract tests cover interim/final/revision; the classic
+    script architecture is preserved.
+  - This is the smallest useful seam and the template for every later module.
 
 - [ ] **Make local the recommended default everywhere.**
   On a clean profile, offer local Whisper setup and do not silently choose the
@@ -199,15 +297,6 @@ Ordered by what most improves a **sovereign panel discussion** first.
   - Acceptance: DevTools network log shows only the consented model download;
     CSP allowlist matches documented hosts; README/PRIVACY/AGENTS updated;
     no analytics or accounts.
-
-- [ ] **Transport-neutral caption event model.**
-  Normalise internal events (`caption.final`, `caption.interim`,
-  `caption.revised`, `speaker.updated`) with stable segment IDs, sequence,
-  revision, source language, optional speaker metadata and timestamps.
-  Render the existing lanes/chat/VTT from these events.
-  - Acceptance: existing transcription, lanes, Unknown handling and VTT are
-    unchanged; synthetic-event tests; no network; documented schema.
-  - This is a prerequisite for translations, corrections and audience views.
 
 - [ ] **Panel evaluation corpus and baseline.**
   Record consented, labelled 2–4 speaker panel audio (turn-taking, overlap,
@@ -344,18 +433,22 @@ Ordered by what most improves a **sovereign panel discussion** first.
   Consider WebVTT/TTML compatibility and a documented event schema before
   inventing anything new.
 
-## 7. Sequencing
+## 8. Sequencing
 
-1. **Sovereign panel MVP:** local default, live panel capture, event model,
-   evaluation corpus, Bergamot translation v1.
-2. **Panel quality:** PyAnnote/WeSpeaker, turn alignment, corrections, overlap.
-3. **Personal multilingual reading:** translation breadth, bilingual display,
+0. **Module seams:** caption events + labs harness; then one module at a time.
+1. **Walking skeleton:** mic → local Whisper → caption events → lanes/VTT,
+   plus one Bergamot pair. No diarization, audience view or relay. This is the
+   first composition demo and the baseline for every later module.
+2. **Sovereign panel MVP:** local default, live panel capture, evaluation
+   corpus, Bergamot translation v1.
+3. **Panel quality:** PyAnnote/WeSpeaker, turn alignment, corrections, overlap.
+4. **Personal multilingual reading:** translation breadth, bilingual display,
    TTS, vocabulary, manual editor.
-4. **Conference mode:** same-device audience viewer, then optional self-hosted
+5. **Conference mode:** same-device audience viewer, then optional self-hosted
    relay/QR and per-viewer local translation.
-5. **Scale and reach:** reliability tests, mobile, WebGPU, larger models.
+6. **Scale and reach:** reliability tests, mobile, WebGPU, larger models.
 
-## 8. Success measures
+## 9. Success measures
 
 - **Sovereignty:** zero vendor STT requests on the default path; zero network
   requests after model install; every model pinned/hashed/licensed.
@@ -369,7 +462,7 @@ Ordered by what most improves a **sovereign panel discussion** first.
   remote fallback, original always available.
 - **Conference:** only claim viewer counts and reliability that were measured.
 
-## 9. Out of scope until explicitly requested
+## 10. Out of scope until explicitly requested
 
 - Cloud speech recognition in the default path.
 - Public room URLs or permanent relay transcript storage.
