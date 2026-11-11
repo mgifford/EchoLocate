@@ -90,3 +90,20 @@ describe('language detection stays offline', () => {
     }
   });
 });
+
+// ── CI and branch hygiene ────────────────────────────────────────────────────
+
+describe('CI checks every main change and pull request', () => {
+  const workflow = read('.github/workflows/tests.yml');
+
+  it('runs on main pushes and pull requests', () => {
+    assert.match(workflow, /push:\s*\n\s*branches:\s*\[main\]/);
+    assert.match(workflow, /pull_request:/);
+  });
+
+  it('checks syntax and runs the full test suite', () => {
+    assert.match(workflow, /node --check app\.js/);
+    assert.match(workflow, /node --check sw\.js/);
+    assert.match(workflow, /npm test/);
+  });
+});
