@@ -27,11 +27,10 @@ replacing the Chrome ≤149 UA gate after device testing.
   and scope "no downloads until consent" to app-managed weights.
 - Acceptance: user can refuse and continue existing path; model removal never deletes transcript.
 
-**Status (2026-11-10):** manifest, exact-revision consent, SHA-256 verification,
+**Status (2026-11-11):** manifest, exact-revision consent, SHA-256 verification,
 progress/cancel, storage refusal, Cache Storage install/removal and the consent
-dialog are implemented. No installable model ships yet; the first entry arrives
-with the engine that consumes it. The Chrome Translator download still needs to
-be inventoried in the consent work.
+dialog are implemented. The manifest now pins `whisper-tiny-en`, and Chrome's
+Translator download is consent-gated per language pair (PR #64).
 
 ## PR 3: Local speech adapter — **partial (WASM), WebGPU blocked**
 - Integrate selected Whisper Web-inspired local ASR (consider Whisper vs Parakeet). Worker inference, buffering, chunking/partials/finals, timestamps, disposal.
@@ -44,8 +43,9 @@ be inventoried in the consent work.
 
 **Status (2026-11-11):** a WASM Whisper adapter (`whisper-tiny.en`, ~43 MB,
 Apache-2.0) is implemented with a worker, 5-second chunks and ModelManager
-cache; verified on this Mac with a generated WAV (1.6 s for ~4 s audio). WebGPU
-remains blocked because Chrome here does not expose `navigator.gpu`.
+cache; verified on this Mac with a generated WAV (1.6 s for ~4 s audio). Live
+microphone capture and Stop/mic release still need a normal-browser check.
+WebGPU remains blocked because Chrome here does not expose `navigator.gpu`.
 
 ## PR 4: Advanced local speaker adapter
 - PyAnnote segmentation + WeSpeaker embeddings, with proper on-device model licensing and model loading.

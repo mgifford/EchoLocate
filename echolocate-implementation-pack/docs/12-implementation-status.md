@@ -1,6 +1,6 @@
 # Implementation status against this pack
 
-Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
+Snapshot: 2026-11-11. Update this file when a roadmap phase changes.
 
 ## Roadmap
 
@@ -8,11 +8,11 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 |---|---|---|
 | PR 0 — baseline | **Done** | Repository reviewed, tests run (`node --check`, `npm test`), current behaviour recorded in `docs/00-project-baseline.md`. |
 | PR 1 — adapters + capability detection | **Mostly done** | Engine selector, persistence, `browser-local` (`processLocally`, `available`, `install`) and disclosure shipped in PR #57. A `SpeechAdapter` contract and a local-only capability snapshot (Web Speech, on-device, WebGPU adapter, WASM, storage) shipped in PR #61. Still open: replacing the Chrome ≤149 UA gate after device testing. |
-| PR 2 — model management + consent | **Done (infrastructure)** | Manifest at `models/manifest.json`, exact-revision consent, SHA-256 verification, progress/cancel, storage refusal, Cache Storage install, removal that keeps transcripts, and a consent dialog. No installable model ships yet; the first model entry arrives with the engine that consumes it. The Chrome Translator download still needs to be in the consent inventory. |
-| PR 3 — local ASR | **Partial (WASM)** | WASM Whisper tiny.en (~43 MB, Apache-2.0) ships with worker, 5 s chunks and hash-verified cache. WebGPU is blocked: Chrome on this Mac does not expose `navigator.gpu`. |
+| PR 2 — model management + consent | **Done** | Manifest, exact-revision consent, SHA-256 verification, progress/cancel, storage refusal, Cache Storage install, removal that keeps transcripts, and a consent dialog. The manifest now pins `whisper-tiny-en`; the Chrome Translator download is consent-gated per language pair (PR #64). |
+| PR 3 — local ASR | **Partial (WASM)** | WASM Whisper tiny.en (~43 MB, Apache-2.0) ships with worker, 5 s chunks and hash-verified cache (PR #66). Live microphone capture still needs manual verification; no partials/timestamps. WebGPU is blocked: Chrome on this Mac does not expose `navigator.gpu`. |
 | PR 4 — advanced diarization | **Planned** | PyAnnote + WeSpeaker, quality gates, exemplars, overlap. |
 | PR 5 — timeline/reconciliation | **Planned** | Shared monotonic clock, revisions, manual-correction precedence. |
-| PR 6 — validation/docs | **Planned** | Browser/device matrix, network audit, resource budget. |
+| PR 6 — validation/docs | **Planned** | Browser/device matrix, network audit, resource budget; a two-person local-Whisper test is the next evidence point. |
 
 ## Repo PRs that reconcile this pack
 
@@ -27,6 +27,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 - **CSP** — meta policy, external theme bootstrap, hashed import map and tests.
 - **Translation consent** — per-pair consent before Chrome's model download (PR #64).
 - **Local Whisper (WASM)** — pinned whisper-tiny.en, model consent, worker and engine (PR #66).
+- **CI** — test/syntax workflow and single-branch workflow docs (PR #65).
 
 ## Current constraints that affect the plan
 
@@ -38,11 +39,15 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
   multi-threaded WASM are unavailable. Plan single-thread ORT.
 - The service worker deliberately refuses to cache `models/`, `onnx-runtime/`
   and `.onnx`/`.safetensors`/`.bin`. Model caching belongs to the consent work.
-- No model weights or recordings are in the repository; the `models/` directory
-  is only a placeholder.
+- No model weights or recordings are in the repository; `models/manifest.json`
+  is metadata only. Model weights are downloaded after consent.
 
 ## Next actionable items
 
-1. Add the first whisper-base manifest entry with the WebGPU engine (PR 3).
+1. Verify live microphone capture and Stop/mic release in a normal browser;
+   measure caption latency, WER and memory with a two-person recording.
 2. Replace the Chrome ≤149 UA gate when a device test matrix is available.
-3. Then measure WER/latency/memory and run the no-upload network audit.
+3. PR 4: advanced diarization (PyAnnote segmentation + WeSpeaker embeddings)
+   and a measurable comparison against the current Meyda heuristic.
+4. WebGPU remains blocked until a machine exposes `navigator.gpu`; keep the
+   WASM engine as the working default.
