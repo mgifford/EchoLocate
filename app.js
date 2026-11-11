@@ -864,6 +864,7 @@ const State = {
   systemAudioSamples:        [], // RMS energy samples during current utterance
   micEnergySamples:          [], // mic RMS samples for source comparison
   speechSupported:           true, // set to false by checkBrowserSupport() when API is absent
+  localOnlyMode:             false, // true when the browser has no usable service speech path
   captionsOnly:              false, // true when the mic-analysis graph is skipped so SR gets exclusive mic access
   maxSpeakers:               parseMaxSpeakers(localStorage.getItem('echolocate-max-speakers')),
   // Translation
@@ -1371,6 +1372,22 @@ function isChromeBrowser() {
   return /Chrome\//.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent);
 }
 
+function isFirefoxBrowser() {
+  return /Firefox\//.test(navigator.userAgent);
+}
+
+/**
+ * Browsers without a usable browser speech service should go straight to the
+ * local model path instead of defaulting to a service that cannot work.
+ * Firefox is treated as local-only even if it exposes SpeechRecognition behind
+ * a flag: its implementation is not the Chrome/Edge service.
+ */
+function chooseSpeechEngineForEnvironment({ hasSpeech, wasmSupported, storedEngine, preferLocal = false } = {}) {
+  if (preferLocal && wasmSupported) return 'wasm-local';
+  if (hasSpeech) return normalizeSpeechEngine(storedEngine);
+  return wasmSupported ? 'wasm-local' : 'browser-service';
+}
+
 function isMobileBrowser() {
   // Detect mobile browsers (Android, iPhone, iPad, iPod).
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -1441,6 +1458,20 @@ function parseBrowserName() {
 
 function checkBrowserSupport() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const wasmSupported = detectWasmFeatures().supported;
+  const preferLocal = isFirefoxBrowser();
+
+  // A browser speech service that cannot work should not be the default. If
+  // WASM is available, send the user to the local Whisper flow instead.
+  if (wasmSupported && (!SR || preferLocal)) {
+    State.speechSupported = true;
+    State.localOnlyMode = true;
+    const warning = document.getElementById('speech-warning');
+    if (warning) warning.classList.add('hidden');
+    setStatus('idle', 'Local captions available — install the model');
+    return false;
+  }
+
   if (SR) {
     // Web Speech API is present.  For Edge users who have not yet seen the
     // setup guide, show a proactive info modal so they know what to configure
@@ -2156,6 +2187,19 @@ async function mergeProfiles(fromId, intoId) {
 function updateEmptyStage() {
   const panel = document.getElementById('empty-stage');
   if (!panel) return;
+
+  if (State.localOnlyMode) {
+    const welcome = document.getElementById('empty-stage-welcome');
+    const unsupported = document.getElementById('empty-stage-unsupported');
+    const localSetup = document.getElementById('empty-stage-local');
+    const ready = LocalWhisper.isAvailable();
+    panel.classList.remove('hidden');
+    if (welcome) welcome.classList.toggle('hidden', !ready);
+    if (unsupported) unsupported.classList.add('hidden');
+    if (localSetup) localSetup.classList.toggle('hidden', ready);
+    if (!ready) return;
+  }
+
   // When speech recognition is unavailable, keep the panel visible so the
   // "not supported" message remains visible even if there are stored cards.
   if (!State.speechSupported) {
@@ -2491,7 +2535,10 @@ async function initEngineControl() {
     const option = document.createElement('option');
     option.value = id;
     option.textContent = meta.label;
-    if (id === 'browser-local' && !supportsOnDeviceSpeech()) {
+    if (State.localOnlyMode && id !== 'wasm-local') {
+      option.disabled = true;
+      option.textContent += ' — not available in this browser';
+    } else if (id === 'browser-local' && !supportsOnDeviceSpeech()) {
       option.disabled = true;
       option.textContent += ' — not supported here';
     }
@@ -2573,6 +2620,30 @@ function openModelConsent(model) {
   if (!dialog.open) dialog.showModal();
   const approve = document.getElementById('model-consent-approve');
   if (approve) approve.focus();
+}
+
+/**
+ * Send the user straight to the local model consent flow. Used by the
+ * local-only empty state and by Start when the model is missing, so Firefox
+ * users do not have to discover a dormant Options section.
+ */
+async function openLocalModelSetup() {
+  const panel = document.getElementById('nav-options-panel');
+  const toggle = document.getElementById('nav-options-toggle');
+  if (panel && panel.hidden && toggle) toggle.click();
+  await initModelControls();
+  const model = ModelManager.get(WHISPER_MODEL_ID);
+  if (!model) {
+    setStatus('error', 'Local Whisper is not available in the model manifest');
+    return;
+  }
+  if (ModelManager.isInstalled(model)) {
+    updateEngineStatus();
+    const select = document.getElementById('engine-select');
+    if (select) select.focus();
+    return;
+  }
+  openModelConsent(model);
 }
 
 function renderModelList(models, message = '') {
@@ -2661,6 +2732,7 @@ async function installLocalModel(model) {
 
   renderModelList(ModelManager.models(), message);
   updateEngineStatus();
+  updateEmptyStage();
 }
 
 async function removeLocalModel(model) {
@@ -2670,6 +2742,7 @@ async function removeLocalModel(model) {
     await ModelManager.remove(model);
     renderModelList(ModelManager.models(), 'Model removed. Transcripts were not changed.');
     updateEngineStatus();
+    updateEmptyStage();
   } catch (err) {
     if (status) status.textContent = `Could not remove model: ${err.message}`;
   }
@@ -4818,7 +4891,10 @@ const LocalWhisper = {
     }
     const model = ModelManager.get(WHISPER_MODEL_ID);
     if (!model || !ModelManager.isInstalled(model)) {
-      setStatus('error', 'Install the local Whisper model in Options first');
+      setStatus('error', 'Install the local Whisper model to caption on this device');
+      openLocalModelSetup().catch((err) => {
+        console.warn('[EchoLocate] Local setup failed:', err.message);
+      });
       return;
     }
 
@@ -5448,6 +5524,15 @@ function initControls() {
   const mergeFrom = document.getElementById('merge-from');
   const mergeInto = document.getElementById('merge-into');
   const langSelect = document.getElementById('lang-select');
+  const btnLocalSetup = document.getElementById('btn-local-setup');
+
+  if (btnLocalSetup) {
+    btnLocalSetup.addEventListener('click', () => {
+      openLocalModelSetup().catch((err) => {
+        console.warn('[EchoLocate] Local setup failed:', err.message);
+      });
+    });
+  }
 
   btnStart.addEventListener('click', async () => {
     btnStart.disabled = true;
@@ -5622,6 +5707,22 @@ async function boot() {
   DebugLog.install();
   checkSecureContext();
   const hasSpeech = checkBrowserSupport();
+  const preferredEngine = chooseSpeechEngineForEnvironment({
+    hasSpeech,
+    wasmSupported: detectWasmFeatures().supported,
+    storedEngine: State.recognitionEngine,
+    preferLocal: isFirefoxBrowser(),
+  });
+  if (preferredEngine !== State.recognitionEngine) {
+    State.recognitionEngine = preferredEngine;
+    localStorage.setItem(ENGINE_STORAGE_KEY, preferredEngine);
+  }
+  if (State.localOnlyMode) {
+    await ModelManager.loadManifest().catch((err) => {
+      console.warn('[EchoLocate] Local model manifest failed:', err.message);
+    });
+    if (LocalWhisper.isAvailable()) setStatus('idle', 'Ready');
+  }
 
   initTheme();
   initSpeechHelpModal();
@@ -5638,7 +5739,8 @@ async function boot() {
   initNavOptions();
   await initAudioDeviceSelector();
   initSpeakerLimitControl();
-  initEngineControl().catch((err) => console.warn('[EchoLocate] Engine control init failed:', err.message));
+  await initEngineControl().catch((err) => console.warn('[EchoLocate] Engine control init failed:', err.message));
+  updateEngineStatus();
 
   await registerServiceWorker();
   TranscriptCtrl.init();

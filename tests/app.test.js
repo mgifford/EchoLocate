@@ -1464,6 +1464,27 @@ describe('normalizeSpeechEngine', () => {
   });
 });
 
+describe('chooseSpeechEngineForEnvironment', () => {
+  const fn = ctx.chooseSpeechEngineForEnvironment;
+
+  it('uses local Whisper when there is no browser speech service', () => {
+    assert.equal(fn({ hasSpeech: false, wasmSupported: true, storedEngine: 'browser-service' }), 'wasm-local');
+  });
+
+  it('uses local Whisper for Firefox even if it exposes SpeechRecognition', () => {
+    assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'browser-service', preferLocal: true }), 'wasm-local');
+  });
+
+  it('keeps the stored engine when a browser service is available', () => {
+    assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'browser-local' }), 'browser-local');
+    assert.equal(fn({ hasSpeech: true, wasmSupported: true, storedEngine: 'wasm-local' }), 'wasm-local');
+  });
+
+  it('falls back to browser-service when no local path exists', () => {
+    assert.equal(fn({ hasSpeech: false, wasmSupported: false, storedEngine: 'wasm-local' }), 'browser-service');
+  });
+});
+
 describe('engineRequiresNetwork', () => {
   const fn = ctx.engineRequiresNetwork;
 
