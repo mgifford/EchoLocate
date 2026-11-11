@@ -856,6 +856,7 @@ const State = {
   debugEnabled:              false,
   debugPoints:               [],
   mediaSource:               null,
+  mediaStream:               null,
   // Audio source detection
   audioInputDeviceId:        localStorage.getItem('echolocate-audio-device') ?? '',
   systemAudioEnabled:        false,
@@ -4610,6 +4611,7 @@ const SpeechEngine = {
     } catch {
       // Ignore stop race.
     }
+    teardownAudio();
   },
 };
 
@@ -4892,6 +4894,7 @@ const LocalWhisper = {
     stopPitchSampling();
     stopLanguageHintTimer();
     showLanguageHint('');
+    teardownAudio();
     TranscriptCtrl.clearInterim();
     setStatus('idle', 'Ready');
     syncTransportState();
@@ -5014,6 +5017,7 @@ async function setupAudio() {
 
   console.log('[EchoLocate] Requesting microphone access...');
   const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+  State.mediaStream = stream;
   const track = stream.getAudioTracks()[0];
   const settings = track && track.getSettings ? track.getSettings() : {};
   console.log('[EchoLocate] Microphone granted — label:', track?.label || '(unknown)',
@@ -5057,6 +5061,55 @@ async function setupAudio() {
   const canvas = document.getElementById('visualizer');
   State.visualizer = new Visualizer(canvas, State.analyser);
   State.visualizer.start();
+}
+
+/**
+ * Release the microphone and the Web Audio graph built for level/pitch
+ * analysis. Stop is a privacy boundary: after it, the browser's mic indicator
+ * should turn off. The next Start recreates the graph.
+ */
+function teardownAudio() {
+  if (State.mediaStream) {
+    for (const track of State.mediaStream.getTracks()) {
+      try {
+        track.stop();
+      } catch {
+        // Ignore tracks that are already ended.
+      }
+    }
+    State.mediaStream = null;
+  }
+  if (State.visualizer) {
+    try {
+      State.visualizer.stop();
+    } catch {
+      // Ignore visualizer teardown races.
+    }
+    State.visualizer = null;
+  }
+  if (State.meydaAnalyzer) {
+    try {
+      State.meydaAnalyzer.stop();
+    } catch {
+      // Ignore Meyda teardown races.
+    }
+    State.meydaAnalyzer = null;
+  }
+  if (State.audioCtx) {
+    const ctx = State.audioCtx;
+    State.audioCtx = null;
+    try {
+      ctx.close();
+    } catch {
+      // Ignore contexts that are already closed.
+    }
+  }
+  State.mediaSource = null;
+  State.analyser = null;
+  State.stereoAnalyserL = null;
+  State.stereoAnalyserR = null;
+  State.micEnergySamples = [];
+  State.latestSignatureFrame = null;
 }
 
 /**
