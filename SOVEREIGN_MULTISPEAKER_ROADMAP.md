@@ -285,6 +285,10 @@ Ordered by what most improves a **sovereign panel discussion** first.
     about the default and the disclosure, not a new model.
     Shipped in PR #74.
 
+- [x] **Lossless audio queue.**
+  Bounded FIFO with stable chunks, drop-oldest backpressure, processed/pending/
+  missing coverage and a visible warning. Shipped in PR #75.
+
 - [ ] **Prove live panel capture and measure it.**
   Complete the live-mic/Firefox/Stop audit and record p50/p95 caption latency,
   CPU, memory, and network requests for 10–15 minute two-person sessions.

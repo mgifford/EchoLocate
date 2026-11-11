@@ -13,6 +13,8 @@ Related material:
 - [AGENTS.md](AGENTS.md) — project rules and code-change checklist
 - [ACCESSIBILITY.md](ACCESSIBILITY.md) — conformance intent and manual test checklist
 - [STT_ADAPTER_MIGRATION_PLAN.md](STT_ADAPTER_MIGRATION_PLAN.md) — current adapter plan
+- [IMPLEMENTATION_ASSESSMENT.md](IMPLEMENTATION_ASSESSMENT.md) — Phase 0/1
+  assessment of audio loss, timeline, diarization and documentation gaps
 - [SOVEREIGN_MULTISPEAKER_ROADMAP.md](SOVEREIGN_MULTISPEAKER_ROADMAP.md) —
   prioritized TODO for panel diarization, local translation, digital
   sovereignty and optional conference mode (issues #67/#68)
@@ -30,6 +32,13 @@ Related material:
   of silently using the browser cloud service; the cloud choice is explicit,
   labelled and remembered. Adds provider metadata and `labs/providers.html`.
   See <https://github.com/mgifford/EchoLocate/pull/74>.
+- **Lossless audio queue (Phase 1)**: bounded FIFO for local Whisper, stable
+  chunk IDs/offsets, processed/pending/missing coverage, drop-oldest
+  backpressure, worker-failure/stop abandonment, a coverage warning and
+  `labs/audio-queue.html`. Plus the Phase 0 implementation assessment and the
+  README licence correction (AGPL-3.0). See
+  [IMPLEMENTATION_ASSESSMENT.md](IMPLEMENTATION_ASSESSMENT.md) and
+  <https://github.com/mgifford/EchoLocate/pull/75>.
 - **Caption event seam** (PR #73): a pure `modules/caption-events.js` contract
   with stable IDs, sequence, revisions, speaker metadata and WebVTT from
   events; the app emits events alongside cards and `labs/events.html`

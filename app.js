@@ -4828,11 +4828,15 @@ const LocalWhisper = {
   pending: new Map(),
   nextId: 1,
   node: null,
+  queue: null,
   samples: [],
   sampleLength: 0,
-  chunkStart: 0,
+  chunkWallStart: 0,
+  chunkSequence: 0,
+  capturedSamples: 0,
+  inFlightChunk: null,
   busy: false,
-  queued: null,
+  lastCoverageText: '',
 
   isAvailable() {
     const model = ModelManager.get(WHISPER_MODEL_ID);
@@ -4914,6 +4918,7 @@ const LocalWhisper = {
         this.readyResolve = null;
         this.readyReject = null;
         reject(error);
+        this._fail(error);
       } else {
         console.warn('[EchoLocate] Whisper:', error.message);
       }
@@ -4929,48 +4934,134 @@ const LocalWhisper = {
     }
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
+
+    if (this.queue) {
+      if (this.inFlightChunk) this.queue.fail(this.inFlightChunk);
+      this.queue.abandonPending('worker failure');
+    }
+    this.busy = false;
+    this.inFlightChunk = null;
+    this.workerReady = false;
+    this.readyPromise = null;
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch {
+        // Ignore termination races.
+      }
+      this.worker = null;
+    }
+    this._updateCoverageUI();
     if (State.isRunning) setStatus('error', `Local Whisper: ${error.message}`);
   },
 
-  async transcribe(samples, startMs) {
-    await this.ensureWorker();
-    if (this.busy) {
-      this.queued = { samples, startMs };
+  _enqueueChunk(chunk) {
+    if (!this.queue) return;
+    const result = this.queue.enqueue(chunk);
+    if (result.dropped.length) {
+      this._reportAudioLoss(result.dropped, result.reason || 'backlog');
+    }
+    if (!result.accepted) {
+      this._reportAudioLoss([chunk], result.reason || 'queue full');
+    }
+    this._updateCoverageUI();
+    this._pump();
+  },
+
+  _reportAudioLoss(chunks, reason) {
+    const seconds = chunks.reduce((total, chunk) => (
+      total + Math.max(0, (chunk.endOffsetMs - chunk.startOffsetMs) / 1000)
+    ), 0);
+    console.warn(`[EchoLocate] Local Whisper backlog (${reason}): ${seconds.toFixed(1)}s of audio will not be transcribed`);
+    this._updateCoverageUI();
+  },
+
+  _updateCoverageUI() {
+    const el = document.getElementById('local-audio-warning');
+    if (!el) return;
+    const stats = this.queue ? this.queue.stats() : null;
+    if (!stats || stats.capturedMs === 0) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      this.lastCoverageText = '';
       return;
     }
+
+    const pct = Math.round(stats.coverage * 100);
+    const missing = stats.missingMs / 1000;
+    const pending = stats.pendingMs / 1000;
+    let text = '';
+    if (missing > 0) {
+      text = `Local audio: ${pct}% processed; ${missing < 10 ? missing.toFixed(1) : Math.round(missing)}s could not be transcribed`;
+      if (pending > 0) text += `; ${pending < 10 ? pending.toFixed(1) : Math.round(pending)}s still pending`;
+      text += '.';
+    } else if (pending > 0) {
+      text = `Local audio: ${pending < 10 ? pending.toFixed(1) : Math.round(pending)}s waiting for transcription.`;
+    }
+
+    if (!text) {
+      el.textContent = '';
+      el.classList.add('hidden');
+      this.lastCoverageText = '';
+      return;
+    }
+    if (text !== this.lastCoverageText) {
+      el.textContent = text;
+      this.lastCoverageText = text;
+    }
+    el.classList.remove('hidden');
+  },
+
+  async _requestTranscription(chunk) {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.worker.postMessage({ type: 'transcribe', id, audio: chunk.samples }, [chunk.samples.buffer]);
+    });
+  },
+
+  async _pump() {
+    if (this.busy || !this.queue || !State.isRunning) return;
+    const chunk = this.queue.dequeue();
+    if (!chunk) return;
+
     this.busy = true;
+    this.inFlightChunk = chunk;
     try {
-      const id = this.nextId++;
-      const result = await new Promise((resolve, reject) => {
-        this.pending.set(id, { resolve, reject });
-        this.worker.postMessage({ type: 'transcribe', id, audio: samples }, [samples.buffer]);
-      });
+      await this.ensureWorker();
+      if (!State.isRunning) {
+        this.queue.fail(chunk);
+        return;
+      }
+      const result = await this._requestTranscription(chunk);
+      if (!State.isRunning) {
+        this.queue.fail(chunk);
+        return;
+      }
       const text = String(result.text || '').trim();
-      if (text && State.isRunning) {
-        State.currentUtteranceStartedAt = startMs;
+      if (text) {
+        State.currentUtteranceStartedAt = chunk.wallStartMs || (Date.now() - (chunk.endOffsetMs - chunk.startOffsetMs));
         TranscriptCtrl.commitCard(text, 0.8);
         setStatus('active', `Listening (local Whisper, ${result.ms} ms)`);
       }
+      this.queue.complete(chunk);
     } catch (err) {
+      this.queue.fail(chunk);
       if (State.isRunning) setStatus('error', `Local Whisper: ${err.message}`);
     } finally {
       this.busy = false;
-      if (this.queued) {
-        const next = this.queued;
-        this.queued = null;
-        this.transcribe(next.samples, next.startMs);
-      }
+      this.inFlightChunk = null;
+      this._updateCoverageUI();
+      if (State.isRunning) this._pump();
     }
   },
 
   _consume(block) {
-    if (!State.isRunning || !State.audioCtx) return;
+    if (!State.isRunning || !State.audioCtx || !this.queue) return;
     const samples = resampleTo16k(block, State.audioCtx.sampleRate);
     if (!samples.length) return;
 
-    if (!this.chunkStart) {
-      this.chunkStart = Date.now() - Math.round((this.sampleLength / WHISPER_SAMPLE_RATE) * 1000);
-    }
+    if (!this.samples.length) this.chunkWallStart = Date.now();
     this.samples.push(samples);
     this.sampleLength += samples.length;
 
@@ -4981,14 +5072,28 @@ const LocalWhisper = {
         all.set(part, offset);
         offset += part.length;
       }
-      const chunk = all.slice(0, WHISPER_CHUNK_SAMPLES);
+      const chunkSamples = all.slice(0, WHISPER_CHUNK_SAMPLES);
       const rest = all.slice(WHISPER_CHUNK_SAMPLES);
       this.samples = rest.length ? [rest] : [];
       this.sampleLength = rest.length;
 
-      const start = this.chunkStart;
-      this.chunkStart = Date.now() - Math.round((rest.length / WHISPER_SAMPLE_RATE) * 1000);
-      this.transcribe(chunk, start);
+      const startOffsetMs = Math.round((this.capturedSamples / WHISPER_SAMPLE_RATE) * 1000);
+      const durationMs = Math.round((chunkSamples.length / WHISPER_SAMPLE_RATE) * 1000);
+      const sequence = ++this.chunkSequence;
+      const chunk = {
+        id: `chunk-${sequence}`,
+        sequence,
+        startOffsetMs,
+        endOffsetMs: startOffsetMs + durationMs,
+        sampleRate: WHISPER_SAMPLE_RATE,
+        samples: chunkSamples,
+        capturedAt: Date.now(),
+        sourceId: 'mic',
+        wallStartMs: this.chunkWallStart || Date.now(),
+      };
+      this.capturedSamples += chunkSamples.length;
+      this.chunkWallStart = Date.now() - Math.round((rest.length / WHISPER_SAMPLE_RATE) * 1000);
+      this._enqueueChunk(chunk);
     }
   },
 
@@ -5006,6 +5111,21 @@ const LocalWhisper = {
       });
       return;
     }
+    if (typeof AudioChunkQueue === 'undefined') {
+      setStatus('error', 'Audio queue module failed to load');
+      return;
+    }
+
+    this.queue = new AudioChunkQueue({ maxChunks: 6, maxPendingMs: 30000 });
+    this.samples = [];
+    this.sampleLength = 0;
+    this.chunkWallStart = 0;
+    this.chunkSequence = 0;
+    this.capturedSamples = 0;
+    this.inFlightChunk = null;
+    this.busy = false;
+    this.lastCoverageText = '';
+    this._updateCoverageUI();
 
     State.isRunning = true;
     State.captionsOnly = false;
@@ -5070,10 +5190,15 @@ const LocalWhisper = {
       }
       this.node = null;
     }
+    if (this.queue) this.queue.abandonPending('stopped');
+    for (const pending of this.pending.values()) pending.reject(new Error('Stopped'));
+    this.pending.clear();
     this.samples = [];
     this.sampleLength = 0;
-    this.chunkStart = 0;
-    this.queued = null;
+    this.chunkWallStart = 0;
+    this.busy = false;
+    this.inFlightChunk = null;
+    this._updateCoverageUI();
     stopPitchSampling();
     stopLanguageHintTimer();
     showLanguageHint('');
@@ -5092,6 +5217,9 @@ const LocalWhisper = {
     }
     this.workerReady = false;
     this.pending.clear();
+    if (this.queue) this.queue.clear();
+    this.busy = false;
+    this.inFlightChunk = null;
   },
 };
 

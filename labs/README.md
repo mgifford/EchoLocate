@@ -18,6 +18,7 @@ says so in visible text.
 | `diarization.html` | Diarization | speaker turns and confidence | Synthetic/short WAV |
 | `events.html` ✅ | Caption events | interim/final/revision → lanes, chat, VTT | Synthetic events |
 | `providers.html` ✅ | Provider metadata | local/browser/cloud badges | Metadata |
+| `audio-queue.html` ✅ | Audio queue | FIFO, drop/coverage, no silent loss | Synthetic chunks |
 | `translation.html` | Translation adapters | text + pair → local/optional remote | Sample sentences |
 | `viewer.html` | Transcript views | accessible history, pause-scroll, preferences | Synthetic events |
 | `audience.html` | Audience view | two windows over `BroadcastChannel` | Synthetic events |

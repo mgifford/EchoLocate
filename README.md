@@ -228,5 +228,5 @@ Check out [Airtime2](https://github.com/mgifford/airtime2) to highlight who spok
 
 ## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)
 

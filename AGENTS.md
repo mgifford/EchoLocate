@@ -51,6 +51,7 @@ Before committing, verify:
 7. Light and dark themes both remain readable
 8. Storage failures and the 500-card trim are visible and announced
 9. Local Whisper: install consent, SHA-256 verification, transcription and model removal still work; no audio leaves the browser
+10. Local Whisper audio queue: no silent drops; missing/pending intervals are visible, and Stop clears pending audio explicitly
 
 ## Local Development
 

@@ -2,7 +2,7 @@
   "name": "echolocate",
   "private": true,
   "scripts": {
-    "test": "node --test tests/sw.test.js tests/app.test.js tests/contrast.test.js tests/project.test.js tests/a11y.test.js tests/models.test.js tests/csp.test.js tests/caption-events.test.js tests/provider-metadata.test.js",
+    "test": "node --test tests/sw.test.js tests/app.test.js tests/contrast.test.js tests/project.test.js tests/a11y.test.js tests/models.test.js tests/csp.test.js tests/caption-events.test.js tests/audio-chunk-queue.test.js tests/provider-metadata.test.js",
     "check": "node --check app.js && node --check sw.js && node --check theme-init.js && npm test"
   }
 }
