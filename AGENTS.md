@@ -35,9 +35,13 @@ Primary runtime pieces:
 - Do not reintroduce lane minimization or hidden historical cards
 - Keep speaker limit at 6 unless a deliberate requirement changes it
 
+## Branching
+- One short-lived branch per PR; keep `main` the only long-lived branch.
+- Merge through a PR and delete the branch; `delete_branch_on_merge` is on.
+
 ## Code Change Checklist
 Before committing, verify:
-1. node --check app.js and node --check sw.js pass
+1. `npm test` and `node --check app.js && node --check sw.js` pass (CI runs both)
 2. Start/Stop/Export/Clear/Theme controls still work
 3. New cards render in correct lane and include card-level match note
 4. Existing cards remain visible while new speakers are added

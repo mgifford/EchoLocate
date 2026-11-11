@@ -2,6 +2,7 @@
   "name": "echolocate",
   "private": true,
   "scripts": {
-    "test": "node --test tests/sw.test.js tests/app.test.js tests/contrast.test.js tests/project.test.js tests/a11y.test.js tests/models.test.js tests/csp.test.js"
+    "test": "node --test tests/sw.test.js tests/app.test.js tests/contrast.test.js tests/project.test.js tests/a11y.test.js tests/models.test.js tests/csp.test.js",
+    "check": "node --check app.js && node --check sw.js && node --check theme-init.js && npm test"
   }
 }

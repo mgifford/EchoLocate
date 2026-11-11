@@ -31,8 +31,8 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 
 - `app.js` is a classic script tested by executing it in a Node `vm` context.
   ES-module adapters need an explicit loading/test strategy before PR 1 lands.
-- There is no CI workflow; checks are `node --check` and `npm test` (357 tests
-  at this snapshot).
+- CI runs `node --check` for `app.js`, `sw.js` and `theme-init.js`, then `npm test`
+  on every push to `main` and every pull request (359 tests at this snapshot).
 - GitHub Pages cannot set COOP/COEP headers, so `SharedArrayBuffer` and
   multi-threaded WASM are unavailable. Plan single-thread ORT.
 - The service worker deliberately refuses to cache `models/`, `onnx-runtime/`

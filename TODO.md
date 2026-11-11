@@ -20,6 +20,10 @@ Related material:
 
 ## Recently shipped
 
+- **CI foundation**: a `Tests` workflow runs syntax checks and the full suite
+  on every push to `main` and every pull request. One branch per PR; merged
+  branches are deleted automatically. See
+  [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 - **PR #55** (merged): honest privacy copy, light/dark contrast, Unknown
   attribution at the speaker cap, captions before translation, Start/Stop
   recovery, fully offline `franc`, regression tests. See
@@ -213,9 +217,15 @@ history, and no reference points at a file that does not exist.
   says yes; the UI is not designed yet.
 - How many Unknown lanes are useful before they become misleading?
 
+## Branch policy
+
+- Work on one short-lived branch per PR; do not stack unrelated work.
+- Merge to `main` through a PR, then delete the branch. The repository setting
+  `delete_branch_on_merge` is enabled.
+- `main` is the only long-lived branch.
+
 ## Known defects still open (2026-11 review)
 
-- No CI workflow; only manual checks in AGENTS.md.
 - Chrome ≤149 detection is UA-version based and disables speaker analysis
   entirely.
 - `smoothMatch` history is session-global rather than per-speaker; revisit with
