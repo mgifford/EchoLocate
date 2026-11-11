@@ -32,9 +32,10 @@ Related material:
   of silently using the browser cloud service; the cloud choice is explicit,
   labelled and remembered. Adds provider metadata and `labs/providers.html`.
   See <https://github.com/mgifford/EchoLocate/pull/74>.
-- **Local Whisper speaker analysis fix**: start the Meyda analyzer on the local
-  path; previously it was created but never started, so local chunks produced
-  no voice signature and fell into Unknown. Regression test included.
+- **Local Whisper speaker analysis fix** (PR #76): start the Meyda analyzer on
+  the local path; previously it was created but never started, so local chunks
+  produced no voice signature and fell into Unknown. Regression test included.
+  See <https://github.com/mgifford/EchoLocate/pull/76>.
 - **Lossless audio queue (Phase 1)**: bounded FIFO for local Whisper, stable
   chunk IDs/offsets, processed/pending/missing coverage, drop-oldest
   backpressure, worker-failure/stop abandonment, a coverage warning and
