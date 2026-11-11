@@ -13,6 +13,12 @@ Related material:
 - [AGENTS.md](AGENTS.md) — project rules and code-change checklist
 - [ACCESSIBILITY.md](ACCESSIBILITY.md) — conformance intent and manual test checklist
 - [STT_ADAPTER_MIGRATION_PLAN.md](STT_ADAPTER_MIGRATION_PLAN.md) — current adapter plan
+- [SOVEREIGN_MULTISPEAKER_ROADMAP.md](SOVEREIGN_MULTISPEAKER_ROADMAP.md) —
+  prioritized TODO for panel diarization, local translation, digital
+  sovereignty and optional conference mode (issues #67/#68)
+- [TECHNOLOGY.md](TECHNOLOGY.md) — inventory of runtime, ASR, diarization,
+  translation, presentation, transport, model and accessibility tech
+- [labs/README.md](labs/README.md) — standalone module demos and their contracts
 - [Planning pack](echolocate-implementation-pack/README.md) and
   [build prompt](prompts/AGENT_BUILD_PROMPT.md): now versioned in the repo.
   Status against the roadmap is tracked in
