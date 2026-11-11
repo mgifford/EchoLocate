@@ -33,7 +33,7 @@ dialog are implemented. No installable model ships yet; the first entry arrives
 with the engine that consumes it. The Chrome Translator download still needs to
 be inventoried in the consent work.
 
-## PR 3: WebGPU local speech adapter — **planned**
+## PR 3: Local speech adapter — **partial (WASM), WebGPU blocked**
 - Integrate selected Whisper Web-inspired local ASR (consider Whisper vs Parakeet). Worker inference, buffering, chunking/partials/finals, timestamps, disposal.
 - Starting model: `onnx-community/whisper-base` (Apache-2.0, ~146 MB fp16,
   ~77 MB int8) with `whisper-tiny` (~76 MB fp16) as the constrained fallback.
@@ -41,6 +41,11 @@ be inventoried in the consent work.
   a later benchmark. No weights in the repo; pin the revision and hash artifacts.
 - Compare performance on realistic browsers/devices; do not assume model size or latency from documentation.
 - Acceptance: confirmed local inference; no remote audio submission, graceful GPU/device loss; existing STT remains selectable.
+
+**Status (2026-11-11):** a WASM Whisper adapter (`whisper-tiny.en`, ~43 MB,
+Apache-2.0) is implemented with a worker, 5-second chunks and ModelManager
+cache; verified on this Mac with a generated WAV (1.6 s for ~4 s audio). WebGPU
+remains blocked because Chrome here does not expose `navigator.gpu`.
 
 ## PR 4: Advanced local speaker adapter
 - PyAnnote segmentation + WeSpeaker embeddings, with proper on-device model licensing and model loading.

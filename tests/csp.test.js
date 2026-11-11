@@ -63,8 +63,10 @@ describe('Content Security Policy', () => {
     assert.equal(policy['style-src'], "'self' 'unsafe-inline'");
   });
 
-  it('keeps network, workers and images local for now', () => {
-    assert.equal(policy['connect-src'], "'self'");
+  it('keeps network, workers and images restricted', () => {
+    assert.match(policy['connect-src'], /'self'/);
+    assert.match(policy['connect-src'], /https:\/\/huggingface\.co/);
+    assert.match(policy['connect-src'], /https:\/\/\*\.hf\.co/);
     assert.equal(policy['worker-src'], "'self' blob:");
     assert.equal(policy['img-src'], "'self' data:");
     assert.equal(policy['font-src'], "'self'");

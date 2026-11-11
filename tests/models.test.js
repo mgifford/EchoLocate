@@ -167,6 +167,25 @@ function configure(ctx, { fetchImpl = null, quota = 10_000_000_000 } = {}) {
 describe('validateModelManifest', () => {
   const fn = loadApp().validateModelManifest;
 
+  it('accepts the shipped manifest', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'models/manifest.json'), 'utf-8'));
+    const result = fn(manifest);
+    assert.equal(result.ok, true, result.errors.join('; '));
+    const model = manifest.models.find((m) => m.id === 'whisper-tiny-en');
+    assert.ok(model, 'missing whisper-tiny-en');
+    assert.equal(model.engine, 'wasm-local');
+    assert.equal(model.transformersModel, 'Xenova/whisper-tiny.en');
+    assert.equal(model.backends[0], 'wasm');
+    assert.equal(model.artifacts.length, 7);
+    assert.equal(
+      model.declaredBytes,
+      model.artifacts.reduce((sum, artifact) => sum + artifact.bytes, 0),
+    );
+    for (const artifact of model.artifacts) {
+      assert.match(artifact.sha256, /^[a-f0-9]{64}$/);
+    }
+  });
+
   it('accepts an empty deployable manifest', () => {
     const result = fn({ schemaVersion: 1, deployable: true, models: [] });
     assert.equal(result.ok, true);

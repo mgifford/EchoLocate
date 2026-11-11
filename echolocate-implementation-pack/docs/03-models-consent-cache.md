@@ -1,7 +1,9 @@
 # Models, consent, caching and licensing
 
-> **Current status (2026-11-10):** a `ModelManager` and consent UI exist, but
-> `models/manifest.json` is empty — no app-managed weights ship yet. Installs
+> **Current status (2026-11-11):** `models/manifest.json` pins
+> `whisper-tiny-en` for the WASM engine. ModelManager downloads the seven
+> artifacts with consent and SHA-256, and Transformers.js reads them from the
+> same Cache Storage via a custom cache (no remote model fetch at inference). Installs
 > require approval for the exact revision and a SHA-256 match, can be cancelled,
 > and are stored in Cache Storage; removal revokes consent and never touches
 > transcripts. The experimental `browser-local` engine asks the browser to

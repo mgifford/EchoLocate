@@ -22,6 +22,9 @@ Current runtime:
 - **Caption pipeline:** final captions render and persist before optional
   translation; translation patches the card afterwards via a stable
   `data-segment-id`. Commits are serialized so two finals cannot interleave.
+- **Local Whisper:** `wasm-local` runs `Xenova/whisper-tiny.en` with
+  Transformers.js/ONNX WASM in a worker, from the ModelManager cache, in
+  ~5-second chunks. English-only; verified on this Mac with a generated WAV.
 - **Other features:** Chrome Translator API (opt-in, per-pair consent before the
   browser downloads a model), system/computer audio via
   `getDisplayMedia`, chat view, debug console, vendored `franc-min` language
@@ -31,17 +34,18 @@ Current runtime:
 - **Service worker:** `echolocate-v2` cache, cleanup of old caches, a real 503
   on an offline cache miss, and no caching of `models/`, `onnx-runtime/` or
   `.onnx`/`.safetensors`/`.bin` files.
-- **Models:** `models/manifest.json` (empty in this build), exact-revision
-  consent, SHA-256 verification, progress/cancel, storage refusal, Cache
-  Storage install and removal that leaves transcripts untouched. No model
-  weights ship; the Chrome Translator download is still to be inventoried.
+- **Models:** `models/manifest.json` pins `whisper-tiny-en` (Apache-2.0,
+  ~43 MB) for the WASM engine. Installs require exact-revision consent and
+  SHA-256 verification, show progress/cancel, refuse insufficient storage and
+  store bytes in Cache Storage; removal leaves transcripts untouched. Weights
+  are not vendored. Translation is consent-gated too.
 - **Accessibility:** Label in Name fixes, one interim live region, non-modal
   translation popup with focus return, reopenable privacy notice, forced-colors
   fallbacks, and a bounded service-worker boot wait.
 - **Security:** meta CSP with self-only defaults, a hashed import map, external
   theme bootstrap, no eval/inline scripts, `wasm-unsafe-eval`, inline styles and
   local-only `connect-src`.
-- **Tests:** 357 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
+- **Tests:** 363 Node tests (`sw`, `app`, `contrast`, `project`, `a11y`). There
   is no CI workflow yet.
 
 ## Historical problem statement (original review, still useful context)

@@ -8,9 +8,10 @@
     'unsafe-inline' because cards and lanes use inline custom properties.
     script-src allows the vendored ESM modules, the hashed import map, and
     WebAssembly compilation; it deliberately does not allow eval or arbitrary
-    inline scripts. Add model hosts to connect-src before shipping a model.
+    inline scripts. connect-src allows the pinned Hugging Face model host and
+    its download redirects.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-B+nDs9FqxHg5pl/2RDYjCVY34Kq2Ux3svHSiqi4U8z8=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-B+nDs9FqxHg5pl/2RDYjCVY34Kq2Ux3svHSiqi4U8z8=' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://huggingface.co https://*.hf.co https://*.huggingface.co; media-src 'self' blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="EchoLocate Phase 1 — Real-time accessible live captions with simulated speaker diarization" />
   <title>EchoLocate — Live Captions</title>
@@ -389,6 +390,6 @@
     </div>
   </footer>
 
-  <script src="app.js?v=20261110-7"></script>
+  <script src="app.js?v=20261111-1"></script>
 </body>
 </html>

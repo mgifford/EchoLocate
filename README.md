@@ -105,8 +105,11 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 5. Optional translation uses Chrome's built-in Translator API on device. EchoLocate asks for consent
    per language pair before Chrome downloads its small translation model; refusing leaves captions
    working
-6. The interface, transcript, export and language detection work offline; the browser speech service
-   requires a network connection in Chrome and Edge, while the on-device engine is designed to work offline
+6. Local Whisper downloads only its pinned model files from Hugging Face after consent; audio and
+   transcripts never leave the browser, and the model is stored in this browser's Cache Storage
+7. The interface, transcript, export and language detection work offline. The browser speech service
+   requires a network connection in Chrome and Edge; the on-device engine and installed local
+   Whisper model are designed to work offline
 
 ## Speech engines (experimental)
 
@@ -115,12 +118,21 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 - **Browser speech service** (default) — the Web Speech API. Chrome and Edge may process audio on
   vendor servers.
 - **On-device (experimental)** — Chrome's `processLocally` recognizer. Chrome downloads a language
-  pack the first time; press **Download language pack** in Options. EchoLocate never downloads model
-  weights itself.
+  pack the first time; press **Download language pack** in Options. EchoLocate never downloads that
+  language pack itself.
+- **Local Whisper (WASM, experimental)** — installs `whisper-tiny.en` (~43 MB, Apache-2.0) from a
+  pinned Hugging Face revision after explicit consent, then runs Whisper on this device with WASM.
+  Audio is not uploaded. English only; captions are produced in ~5 s chunks. Remove the model from
+  Options at any time.
 
 On-device availability depends on the Chrome version, platform and language. If it is not available,
 the app says so and leaves the browser service usable. This path has not yet been tested across
 browsers, devices and languages — treat it as experimental.
+
+Local Whisper needs WebAssembly and SIMD (available in current Chrome/Edge/Firefox/Safari) and enough
+space for the ~43 MB model. The first caption arrives after a 5-second audio chunk, so it is not
+word-by-word streaming. It is English-only in this build; model files are verified against pinned
+SHA-256 before use.
 
 ## Run locally (offline-friendly)
 
