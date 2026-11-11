@@ -307,9 +307,9 @@
           </div>
           <div id="empty-stage-local" class="hidden">
             <h2>Set up local captions</h2>
-            <p>
-              This browser cannot use the built-in browser speech service. EchoLocate can run
-              Whisper locally on this device instead.
+            <p id="local-setup-reason">
+              Local Whisper keeps audio on this device. Install the model, or explicitly use the
+              browser’s cloud speech service instead.
             </p>
             <p>
               The English-only Whisper tiny model is about 43 MB. It downloads once after you
@@ -317,6 +317,11 @@
               browser.
             </p>
             <button id="btn-local-setup" class="btn btn-primary" type="button">Install local model</button>
+            <button id="btn-use-cloud" class="btn btn-secondary" type="button" hidden>Use browser cloud service</button>
+            <p id="local-setup-cloud-note" hidden>
+              The browser cloud service may send audio to Google or Microsoft. Local Whisper is
+              the privacy-preserving default.
+            </p>
             <p>You can also find this under <strong>Options → Local models</strong>.</p>
           </div>
           <div id="empty-stage-unsupported" class="hidden">
@@ -406,8 +411,9 @@
     </div>
   </footer>
 
+  <script src="modules/provider-metadata.js?v=1"></script>
   <script src="modules/caption-events.js?v=1"></script>
   <script src="modules/audio-chunk-queue.js?v=1"></script>
-  <script src="app.js?v=20261111-5"></script>
+  <script src="app.js?v=20261111-6"></script>
 </body>
 </html>

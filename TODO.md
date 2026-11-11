@@ -28,6 +28,10 @@ Related material:
 
 ## Recently shipped
 
+- **Local-first default** (PR #74): first run recommends local Whisper instead
+  of silently using the browser cloud service; the cloud choice is explicit,
+  labelled and remembered. Adds provider metadata and `labs/providers.html`.
+  See <https://github.com/mgifford/EchoLocate/pull/74>.
 - **Lossless audio queue (Phase 1)**: bounded FIFO for local Whisper, stable
   chunk IDs/offsets, processed/pending/missing coverage, drop-oldest
   backpressure, worker-failure/stop abandonment, a coverage warning and

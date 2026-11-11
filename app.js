@@ -1386,8 +1386,22 @@ function isFirefoxBrowser() {
  */
 function chooseSpeechEngineForEnvironment({ hasSpeech, wasmSupported, storedEngine, preferLocal = false } = {}) {
   if (preferLocal && wasmSupported) return 'wasm-local';
-  if (hasSpeech) return normalizeSpeechEngine(storedEngine);
-  return wasmSupported ? 'wasm-local' : 'browser-service';
+
+  // An explicit stored choice wins when it can work here. If it cannot, fall
+  // back to the available path instead of selecting a dead engine.
+  if (storedEngine) {
+    const stored = normalizeSpeechEngine(storedEngine);
+    if (stored === 'wasm-local' && !wasmSupported) return 'browser-service';
+    if (stored !== 'wasm-local' && !hasSpeech) {
+      return wasmSupported ? 'wasm-local' : 'browser-service';
+    }
+    return stored;
+  }
+
+  // First run: recommend local when it can work, rather than silently using a
+  // vendor speech service. The UI offers a cloud opt-in next to setup.
+  if (wasmSupported) return 'wasm-local';
+  return 'browser-service';
 }
 
 function isMobileBrowser() {
@@ -1475,6 +1489,13 @@ function checkBrowserSupport() {
   }
 
   if (SR) {
+    // If local Whisper will be recommended, the Edge/mobile cloud-setup modals
+    // are premature. The empty-state setup choice is the right prompt.
+    const storedEngine = localStorage.getItem(ENGINE_STORAGE_KEY);
+    const localRecommended = wasmSupported
+      && (!storedEngine || normalizeSpeechEngine(storedEngine) === 'wasm-local');
+    if (localRecommended) return true;
+
     // Web Speech API is present.  For Edge users who have not yet seen the
     // setup guide, show a proactive info modal so they know what to configure
     // before pressing Start.
@@ -2190,16 +2211,49 @@ function updateEmptyStage() {
   const panel = document.getElementById('empty-stage');
   if (!panel) return;
 
+  const welcome = document.getElementById('empty-stage-welcome');
+  const unsupported = document.getElementById('empty-stage-unsupported');
+  const localSetup = document.getElementById('empty-stage-local');
+  const useCloud = document.getElementById('btn-use-cloud');
+  const cloudNote = document.getElementById('local-setup-cloud-note');
+  const localReason = document.getElementById('local-setup-reason');
+
+  if (!State.localOnlyMode) {
+    if (localSetup) localSetup.classList.add('hidden');
+    if (useCloud) useCloud.hidden = true;
+    if (cloudNote) cloudNote.hidden = true;
+  }
+
   if (State.localOnlyMode) {
-    const welcome = document.getElementById('empty-stage-welcome');
-    const unsupported = document.getElementById('empty-stage-unsupported');
-    const localSetup = document.getElementById('empty-stage-local');
     const ready = LocalWhisper.isAvailable();
     panel.classList.remove('hidden');
     if (welcome) welcome.classList.toggle('hidden', !ready);
     if (unsupported) unsupported.classList.add('hidden');
     if (localSetup) localSetup.classList.toggle('hidden', ready);
+    if (useCloud) useCloud.hidden = true;
+    if (cloudNote) cloudNote.hidden = true;
+    if (localReason) localReason.textContent = 'This browser cannot use the built-in browser speech service. Local Whisper is the only transcription path here.';
     if (!ready) return;
+  }
+
+  // First-run recommendation: local Whisper is selected, but the model is not
+  // installed. Keep the setup choice visible instead of silently switching to
+  // a vendor service.
+  if (
+    !State.localOnlyMode
+    && State.recognitionEngine === 'wasm-local'
+    && !LocalWhisper.isAvailable()
+    && !State.isRunning
+    && Storage.allCards().length === 0
+  ) {
+    panel.classList.remove('hidden');
+    if (welcome) welcome.classList.add('hidden');
+    if (unsupported) unsupported.classList.add('hidden');
+    if (localSetup) localSetup.classList.remove('hidden');
+    if (useCloud) useCloud.hidden = !getSpeechRecognitionCtor();
+    if (cloudNote) cloudNote.hidden = !getSpeechRecognitionCtor();
+    if (localReason) localReason.textContent = 'Local Whisper keeps audio on this device. Install the model, or explicitly use the browser’s cloud speech service instead.';
+    return;
   }
 
   // When speech recognition is unavailable, keep the panel visible so the
@@ -2208,6 +2262,7 @@ function updateEmptyStage() {
     panel.classList.remove('hidden');
     return;
   }
+  if (welcome && State.speechSupported) welcome.classList.remove('hidden');
   const count = Storage.allCards().length;
   panel.classList.toggle('hidden', State.isRunning || count > 0);
 }
@@ -2507,9 +2562,18 @@ async function updateEngineStatus() {
     if (!model) {
       setEngineStatusText('Local Whisper model unavailable', 'unavailable');
     } else if (!ModelManager.isInstalled(model)) {
-      setEngineStatusText('Install Whisper tiny in Local models', 'checking');
+      setEngineStatusText('Install Whisper tiny — local model required', 'checking');
     } else {
-      setEngineStatusText('Local Whisper model ready', 'available');
+      setEngineStatusText('Local Whisper model ready — on this device', 'available');
+    }
+    return;
+  }
+
+  if (State.recognitionEngine === 'browser-service') {
+    if (!getSpeechRecognitionCtor()) {
+      setEngineStatus('unsupported');
+    } else {
+      setEngineStatusText('Browser speech service — cloud', 'checking');
     }
     return;
   }
@@ -2528,6 +2592,14 @@ async function updateEngineStatus() {
   setEngineStatus(status);
 }
 
+function engineOptionLabel(id, meta) {
+  if (typeof ProviderMetadata !== 'undefined') {
+    const provider = ProviderMetadata.getProvider(`asr.${id}`);
+    if (provider) return `${meta.label} — ${ProviderMetadata.processingLabel(provider)}`;
+  }
+  return meta.label;
+}
+
 async function initEngineControl() {
   const select = document.getElementById('engine-select');
   if (!select) return;
@@ -2536,7 +2608,7 @@ async function initEngineControl() {
   for (const [id, meta] of Object.entries(SPEECH_ENGINES)) {
     const option = document.createElement('option');
     option.value = id;
-    option.textContent = meta.label;
+    option.textContent = engineOptionLabel(id, meta);
     if (State.localOnlyMode && id !== 'wasm-local') {
       option.disabled = true;
       option.textContent += ' — not available in this browser';
@@ -2567,6 +2639,7 @@ async function initEngineControl() {
     // Rebuild the recognizer so the next session uses the new mode.
     getSpeechAdapter(next).init();
     updateEngineStatus();
+    updateEmptyStage();
   });
 
   const installBtn = document.getElementById('btn-install-langpack');
@@ -5740,6 +5813,18 @@ function initControls() {
   const mergeInto = document.getElementById('merge-into');
   const langSelect = document.getElementById('lang-select');
   const btnLocalSetup = document.getElementById('btn-local-setup');
+  const btnUseCloud = document.getElementById('btn-use-cloud');
+
+  if (btnUseCloud) {
+    btnUseCloud.addEventListener('click', () => {
+      if (!getSpeechRecognitionCtor()) return;
+      const select = document.getElementById('engine-select');
+      if (!select) return;
+      select.value = 'browser-service';
+      select.dispatchEvent(new Event('change'));
+      updateEmptyStage();
+    });
+  }
 
   if (btnLocalSetup) {
     btnLocalSetup.addEventListener('click', () => {
@@ -5926,18 +6011,22 @@ async function boot() {
   const preferredEngine = chooseSpeechEngineForEnvironment({
     hasSpeech,
     wasmSupported: detectWasmFeatures().supported,
-    storedEngine: State.recognitionEngine,
+    storedEngine: localStorage.getItem(ENGINE_STORAGE_KEY),
     preferLocal: isFirefoxBrowser(),
   });
   if (preferredEngine !== State.recognitionEngine) {
     State.recognitionEngine = preferredEngine;
     localStorage.setItem(ENGINE_STORAGE_KEY, preferredEngine);
   }
-  if (State.localOnlyMode) {
+  if (State.recognitionEngine === 'wasm-local') {
     await ModelManager.loadManifest().catch((err) => {
       console.warn('[EchoLocate] Local model manifest failed:', err.message);
     });
-    if (LocalWhisper.isAvailable()) setStatus('idle', 'Ready');
+    if (LocalWhisper.isAvailable()) {
+      setStatus('idle', 'Ready');
+    } else {
+      setStatus('idle', 'Local captions — install the model');
+    }
   }
 
   initTheme();

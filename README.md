@@ -16,7 +16,7 @@ EchoLocate combines two browser pipelines in parallel:
 
 1. Speech-to-text pipeline
 - Input: browser microphone stream
-- Engine: Web Speech API (`SpeechRecognition` / `webkitSpeechRecognition`)
+- Engine: local Whisper (WASM, recommended) or the Web Speech API (explicit cloud option)
 - Output: transcript chunks with confidence values
 
 2. Voice differentiation pipeline
@@ -98,8 +98,9 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 
 1. Transcripts, speaker labels and settings are stored in this browser only; EchoLocate never uploads them
 2. There is no EchoLocate backend — the Service Worker only renders local page fragments
-3. Speech recognition uses the browser's Web Speech API. In Chrome and Edge that can send audio to the
-   browser vendor's speech servers, under that vendor's terms. EchoLocate does not control that path
+3. Local Whisper runs on this device and is the recommended default. If you explicitly choose the
+   browser speech service, Chrome and Edge can send audio to the browser vendor's speech servers
+   under that vendor's terms. EchoLocate does not control that path
 4. The experimental **On-device** engine asks Chrome to recognise speech locally; Chrome downloads and
    manages the language pack itself (see below)
 5. Optional translation uses Chrome's built-in Translator API on device. EchoLocate asks for consent
@@ -115,7 +116,7 @@ This makes the transcript more useful in subtitle-capable tools that understand 
 
 **Options → Engine** selects how speech is transcribed:
 
-- **Browser speech service** (default) — the Web Speech API. Chrome and Edge may process audio on
+- **Browser speech service** (explicit cloud option) — the Web Speech API. Chrome and Edge may process audio on
   vendor servers.
 - **On-device (experimental)** — Chrome's `processLocally` recognizer. Chrome downloads a language
   pack the first time; press **Download language pack** in Options. EchoLocate never downloads that
@@ -125,10 +126,11 @@ This makes the transcript more useful in subtitle-capable tools that understand 
   Audio is not uploaded. English only; captions are produced in ~5 s chunks. Remove the model from
   Options at any time.
 
-Browsers without a usable browser speech service — **Firefox**, and any browser that does not
-expose Web Speech — default to Local Whisper instead of offering a service that cannot work. The
-engine selector disables the unavailable service options, the empty state explains the model
-download, and pressing Start opens the install consent if the model is missing.
+Local Whisper is the recommended default on first run, including Chrome, Edge and Safari. The
+empty state explains the ~43 MB model and offers an explicit **Use browser cloud service** choice;
+that choice is labelled cloud and remembered. Browsers without a usable browser speech service —
+**Firefox**, and any browser that does not expose Web Speech — are local-only and do not offer the
+cloud path. Pressing Start without the model opens the install consent.
 
 On-device availability depends on the Chrome version, platform and language. If it is not available,
 the app says so and leaves the browser service usable. This path has not yet been tested across
@@ -158,23 +160,24 @@ See [INSTALL.txt](INSTALL.txt) for installation and troubleshooting details.
 
 ## Browser support
 
-EchoLocate relies on the **Web Speech API** (`SpeechRecognition` / `webkitSpeechRecognition`).
-This API is only available in a narrow set of browsers, which determines what works and what does not.
+EchoLocate recommends **local Whisper** and offers the **Web Speech API** as an explicit cloud
+option. The browser API is only available in a narrow set of browsers; local Whisper needs
+WebAssembly and enough space for its model.
 
 ### Desktop
 
 | Browser | Status | Notes |
 |---------|--------|-------|
-| Chrome | ✅ Supported | Recommended. Speech is processed by Google's servers (requires internet). |
-| Edge | ✅ Supported | Requires **Online speech recognition** to be enabled in Windows Settings → Privacy & security → Speech. Does not work in InPrivate windows. |
+| Chrome | ✅ Supported | Local Whisper recommended. The cloud browser service is an explicit choice and sends audio to Google's servers. |
+| Edge | ✅ Supported | Local Whisper recommended. The cloud option requires **Online speech recognition** and does not work in InPrivate windows. |
 | Firefox | ✅ Supported with local Whisper | Firefox has no usable browser speech service, so EchoLocate defaults to Local Whisper. Install the ~43 MB English-only model once; transcription then runs on this device. |
-| Safari | ❌ Not supported | Safari does not implement Web Speech API on macOS in a compatible way. |
+| Safari | ⚠️ Local Whisper untested | Safari's Web Speech API is inconsistent. The local Whisper path may work; it has not been tested on Safari. |
 
 ### Mobile
 
 | Browser / Platform | Status | Notes |
 |--------------------|--------|-------|
-| Chrome on Android | ⚠️ Limited | Most likely to work. Requires an active internet connection (speech is sent to Google's servers). Grant microphone permission when prompted. |
+| Chrome on Android | ⚠️ Limited | Local Whisper may work but is not tested on mobile; the cloud option requires internet and sends audio to Google. Grant microphone permission when prompted. |
 | Edge on Android | ⚠️ Limited | Reports the API as available but may fail silently. Not recommended. |
 | Firefox on Android | ⚠️ Local Whisper only | No browser speech service. The local model may run, but CPU/memory and speed vary by device. |
 | Samsung Internet | ❌ Not supported | No Web Speech API support. |

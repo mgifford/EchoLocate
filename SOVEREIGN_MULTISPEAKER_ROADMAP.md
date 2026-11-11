@@ -275,7 +275,7 @@ Ordered by what most improves a **sovereign panel discussion** first.
   - This is the smallest useful seam and the template for every later module.
     Shipped in PR #73.
 
-- [ ] **Make local the recommended default everywhere.**
+- [x] **Make local the recommended default everywhere.**
   On a clean profile, offer local Whisper setup and do not silently choose the
   browser cloud service. If the user chooses service speech, label it **cloud**
   and remember that explicit choice.
@@ -283,6 +283,7 @@ Ordered by what most improves a **sovereign panel discussion** first.
     engine status says local/cloud; Firefox and Chrome behave consistently.
   - Note: Chrome already has an experimental on-device engine; this item is
     about the default and the disclosure, not a new model.
+    Shipped in PR #74.
 
 - [x] **Lossless audio queue.**
   Bounded FIFO with stable chunks, drop-oldest backpressure, processed/pending/

@@ -116,7 +116,7 @@ the working record; update it when a phase changes.
   cleanup/recreation, Stop/worker-failure abandonment, chunk IDs/offsets,
   and a user-visible `#local-audio-warning` coverage warning.
 - `labs/audio-queue.html`: standalone synthetic FIFO/coverage lab.
-- Tests: 387 total; queue tests cover faster/slower inference, 15-minute
+- Tests: 393 total after merging the local-first/provider work; queue tests cover faster/slower inference, 15-minute
   capture, capacity, rejected/overlapping chunks, gaps, failure, stop,
   restart and interval union.
 

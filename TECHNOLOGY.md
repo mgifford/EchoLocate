@@ -28,6 +28,8 @@ name.
 | Web Workers | Local ASR inference off the main thread | Shipped | Local / model-download | Module worker imports vendored Transformers.js. |
 | WebAssembly SIMD | Whisper/ONNX execution | Shipped | Local / model-download | Single-thread: GitHub Pages cannot set COOP/COEP. |
 | WebGPU | Faster local inference | Blocked here | Local / model-download | Chrome on the development Mac reports `navigator.gpu === false`; re-check on real hardware. |
+| Provider metadata | Local/cloud/browser-managed labels | Shipped | Local / none | `modules/provider-metadata.js`; labels engine options and drives the setup choice. |
+| Audio chunk queue | Bounded FIFO/coverage | Shipped | Local / none | `modules/audio-chunk-queue.js`; drops oldest queued chunk and records missing intervals. |
 | localStorage | Transcript, preferences, consent | Shipped | Local / none | 500-card cap and quota failures are surfaced; no server copy. |
 | CI (`Tests` workflow) | Syntax + test suite | Shipped | — | One short-lived branch per PR. |
 
@@ -35,7 +37,7 @@ name.
 
 | Technology | Status | Processing / network | Why / limits |
 |---|---|---|---|
-| Web Speech API (browser service) | Shipped, optional | Cloud / streaming | Works in Chrome/Edge but normally sends audio to the vendor. Must be explicitly labelled **cloud**; never the sovereignty default. |
+| Web Speech API (browser service) | Shipped, explicit opt-in | Cloud / streaming | Works in Chrome/Edge but normally sends audio to the vendor. Must be explicitly labelled **cloud**; never the sovereignty default. |
 | Chrome on-device `SpeechRecognition` (`processLocally`) | Experimental | Browser-managed / model-download | Chrome installs a language pack; inference is local but the pack is vendor-managed. Label it separately from EchoLocate-managed local models. |
 | Whisper tiny.en via Transformers.js + ONNX Runtime WASM | Shipped | Local / model-download | ~43 MB, Apache-2.0, English-only, 5 s chunks. Pinned revision and SHA-256; inference reads only Cache Storage. |
 | Whisper base/multilingual models | Planned | Local / model-download | Bigger, slower, potentially more accurate; do not ship without WER/latency/memory evidence. |
@@ -108,9 +110,9 @@ name.
 
 | Technology | Status | Notes |
 |---|---|---|
-| Node contract tests | Shipped | 376 tests at this snapshot, including the caption-event module. |
+| Node contract tests | Shipped | 393 tests at this snapshot, including caption events, provider metadata and the audio queue. |
 | CI syntax/contract workflow | Shipped | Runs on PRs and `main`. |
-| `labs/` standalone demos | Started | `events.html` is live; the remaining lab pages are planned. See [labs/README.md](labs/README.md). |
+| `labs/` standalone demos | Started | `events.html`, `providers.html` and `audio-queue.html` are live; the remaining pages are planned. See [labs/README.md](labs/README.md). |
 | Browser/CDP manual runs | Ad hoc | Used for CSP, model install, worker and synthetic-audio checks. |
 | Labelled panel corpus | Planned | Needed for DER/WER/speaker-attributed WER; consent and privacy first. |
 
