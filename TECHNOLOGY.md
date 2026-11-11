@@ -66,7 +66,7 @@ name.
 
 | Technology | Status | Processing / network | Why / limits |
 |---|---|---|---|
-| Structured caption events | Planned (P0) | Local / none | Stable segment IDs, sequence, revision, timing, language, optional speaker. Prerequisite for translation, corrections and audience views. |
+| Structured caption events | Shipped (app emission + lab) | Local / none | Stable segment IDs, sequence, revision, timing, language, optional speaker. The app emits events alongside cards; `labs/events.html` renders them without `app.js`. |
 | Lanes / chat views | Shipped | Local / none | Accessible transcript; one card per ASR final. |
 | WebVTT export | Shipped | Local / none | Speaker labels and timestamps; SRT/TXT are planned. |
 | Manual editor/corrections | Planned | Local / none | Human correction with revisions, not duplicate cards. |
@@ -108,9 +108,9 @@ name.
 
 | Technology | Status | Notes |
 |---|---|---|
-| Node `vm` contract tests | Shipped | 367 tests at this snapshot. |
+| Node contract tests | Shipped | 376 tests at this snapshot, including the caption-event module. |
 | CI syntax/contract workflow | Shipped | Runs on PRs and `main`. |
-| `labs/` standalone demos | Planned | Each module demoable with synthetic fixtures; see [labs/README.md](labs/README.md). |
+| `labs/` standalone demos | Started | `events.html` is live; the remaining lab pages are planned. See [labs/README.md](labs/README.md). |
 | Browser/CDP manual runs | Ad hoc | Used for CSP, model install, worker and synthetic-audio checks. |
 | Labelled panel corpus | Planned | Needed for DER/WER/speaker-attributed WER; consent and privacy first. |
 

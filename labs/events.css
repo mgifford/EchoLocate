@@ -1,0 +1,121 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --text: #1b1f24;
+  --muted: #4a5563;
+  --line: #c7ced8;
+  --accent: #0b5cad;
+  --focus: #b45309;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101418;
+    --panel: #181e25;
+    --text: #f1f4f8;
+    --muted: #b7c0cc;
+    --line: #44505e;
+    --accent: #8fc7ff;
+    --focus: #ffd166;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0 auto;
+  max-width: 78rem;
+  padding: 1.5rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a { color: var(--accent); }
+a:focus-visible,
+button:focus-visible,
+pre:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.lab-header p { max-width: 68ch; }
+.lab-back { margin: 0; }
+.lab-badge {
+  display: inline-block;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+h1 { margin: 0.25rem 0 0.5rem; font-size: clamp(1.6rem, 4vw, 2.4rem); }
+h2 { margin-top: 2rem; font-size: 1.25rem; }
+
+.lab-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+button {
+  min-height: 44px;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+
+.lab-status {
+  min-height: 1.5rem;
+  color: var(--muted);
+}
+
+.lab-lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+}
+
+.lab-lane {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+}
+
+.lab-lane h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.lab-cards { display: grid; gap: 0.5rem; }
+.lab-card {
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-left: 6px solid var(--accent);
+  background: color-mix(in srgb, var(--panel) 85%, var(--line));
+}
+.lab-card p { margin: 0; }
+.lab-card .meta { color: var(--muted); font-size: 0.85rem; }
+
+.lab-chat { padding-left: 1.4rem; }
+.lab-chat li { margin-bottom: 0.5rem; }
+.lab-chat .speaker { font-weight: 700; }
+
+pre {
+  padding: 1rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto; }
+}

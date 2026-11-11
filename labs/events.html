@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Caption events lab — EchoLocate</title>
+  <link rel="stylesheet" href="events.css">
+</head>
+<body>
+  <header class="lab-header">
+    <p class="lab-back"><a href="../">EchoLocate</a> / lab</p>
+    <h1>Caption events lab</h1>
+    <p class="lab-badge">Local only · no network · no model · synthetic data</p>
+    <p>
+      This page loads only <code>modules/caption-events.js</code>. It does not
+      load <code>app.js</code>, a microphone, or a model. It demonstrates the
+      pure event contract that the app and future audience/overlay views share.
+    </p>
+  </header>
+
+  <main>
+    <section aria-labelledby="controls-heading">
+      <h2 id="controls-heading">Synthetic events</h2>
+      <div class="lab-controls">
+        <button id="add-final" type="button">Add final</button>
+        <button id="add-interim" type="button">Add interim</button>
+        <button id="revise-last" type="button">Revise last speaker</button>
+        <button id="reset" type="button">Reset</button>
+      </div>
+      <p id="status" class="lab-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="lanes-heading">
+      <h2 id="lanes-heading">Lanes</h2>
+      <div id="lanes" class="lab-lanes"></div>
+    </section>
+
+    <section aria-labelledby="chat-heading">
+      <h2 id="chat-heading">Chat order</h2>
+      <ol id="chat" class="lab-chat"></ol>
+    </section>
+
+    <section aria-labelledby="vtt-heading">
+      <h2 id="vtt-heading">WebVTT from events</h2>
+      <p>Only final/revised events render. The latest revision wins; interim text never enters the export.</p>
+      <pre id="vtt" tabindex="0" aria-label="WebVTT output"></pre>
+    </section>
+  </main>
+
+  <script src="../modules/caption-events.js"></script>
+  <script src="events.js"></script>
+</body>
+</html>
