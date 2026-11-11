@@ -170,6 +170,26 @@ body {
 #secure-warning strong { font-weight: 700; }
 #secure-warning code   { font-family: monospace; opacity: 0.8; }
 
+#local-audio-warning {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #1a0e00;
+  border-bottom: 2px solid var(--warning);
+  color: var(--warning);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+  z-index: 100;
+}
+
+[data-theme="light"] #local-audio-warning {
+  background: #fff8e6;
+  color: var(--warning-text);
+}
+
 #speech-warning {
   flex-shrink: 0;
   display: flex;

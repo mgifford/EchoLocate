@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audio queue lab — EchoLocate</title>
+  <link rel="stylesheet" href="events.css">
+</head>
+<body>
+  <header class="lab-header">
+    <p class="lab-back"><a href="../">EchoLocate</a> / lab</p>
+    <h1>Audio queue and coverage lab</h1>
+    <p class="lab-badge">Local only · no network · no model · synthetic audio</p>
+    <p>
+      This page loads only <code>modules/audio-chunk-queue.js</code>. It shows
+      bounded FIFO behavior, dropped-audio intervals and coverage. It does not
+      use a microphone, model or worker.
+    </p>
+  </header>
+
+  <main>
+    <section aria-labelledby="controls-heading">
+      <h2 id="controls-heading">Synthetic chunks</h2>
+      <div class="lab-controls">
+        <button id="add" type="button">Capture 5 s</button>
+        <button id="process" type="button">Process next</button>
+        <button id="slow" type="button">Simulate slow inference</button>
+        <button id="fail" type="button">Fail in-flight</button>
+        <button id="stop" type="button">Stop / abandon pending</button>
+        <button id="reset" type="button">Reset</button>
+      </div>
+      <p id="status" class="lab-status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section aria-labelledby="stats-heading">
+      <h2 id="stats-heading">Coverage</h2>
+      <div id="stats" class="lab-lanes"></div>
+    </section>
+
+    <section aria-labelledby="missing-heading">
+      <h2 id="missing-heading">Missing intervals</h2>
+      <p id="missing">None.</p>
+    </section>
+  </main>
+
+  <script src="../modules/audio-chunk-queue.js"></script>
+  <script src="audio-queue.js"></script>
+</body>
+</html>
