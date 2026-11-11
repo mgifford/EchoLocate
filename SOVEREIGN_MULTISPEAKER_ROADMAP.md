@@ -150,6 +150,26 @@ programme, not one PR.
 Recommendation: keep #68 as a design note. Implement its first two phases only
 after the local panel and local translation paths are credible.
 
+### Translation strategy for “whatever language”
+
+No single on-device model covers every language. Be explicit about tiers rather
+than promising “all languages”:
+
+1. **Tier A — Bergamot:** small, fast, local, roughly the 17 languages in
+   CAPTION.ninja's free set. Good default for common conference pairs.
+2. **Tier B — local per-pair models:** Marian/OPUS/Transformers models added
+   one pair at a time. Each pair has a size, licence, quality and latency cost;
+   download only after consent and keep it offline afterwards.
+3. **Tier C — optional remote:** explicit opt-in only, never a silent fallback,
+   no API keys in shared URLs, and the original transcript remains available.
+
+For conference mode, distribute **source text only** and let each device
+translate locally into the reader's chosen language. That keeps the relay
+language-agnostic, avoids sending translated text to every participant, and lets
+each reader choose without changing anyone else's view. If a local pair is
+missing, show the original with a clear explanation; do not call a remote
+provider silently.
+
 ## 6. TODO
 
 Ordered by what most improves a **sovereign panel discussion** first.
