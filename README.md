@@ -125,6 +125,11 @@ This makes the transcript more useful in subtitle-capable tools that understand 
   Audio is not uploaded. English only; captions are produced in ~5 s chunks. Remove the model from
   Options at any time.
 
+Browsers without a usable browser speech service — **Firefox**, and any browser that does not
+expose Web Speech — default to Local Whisper instead of offering a service that cannot work. The
+engine selector disables the unavailable service options, the empty state explains the model
+download, and pressing Start opens the install consent if the model is missing.
+
 On-device availability depends on the Chrome version, platform and language. If it is not available,
 the app says so and leaves the browser service usable. This path has not yet been tested across
 browsers, devices and languages — treat it as experimental.
@@ -142,7 +147,7 @@ cd EchoLocate
 python3 server.py
 ```
 
-Then open `http://localhost:8080/` in Chrome or Edge.
+Then open `http://localhost:8080/` in Chrome, Edge, or Firefox.
 
 Optional model/dependency refresh scripts:
 
@@ -162,7 +167,7 @@ This API is only available in a narrow set of browsers, which determines what wo
 |---------|--------|-------|
 | Chrome | ✅ Supported | Recommended. Speech is processed by Google's servers (requires internet). |
 | Edge | ✅ Supported | Requires **Online speech recognition** to be enabled in Windows Settings → Privacy & security → Speech. Does not work in InPrivate windows. |
-| Firefox | ❌ Not supported | Firefox does not implement the Web Speech API. |
+| Firefox | ✅ Supported with local Whisper | Firefox has no usable browser speech service, so EchoLocate defaults to Local Whisper. Install the ~43 MB English-only model once; transcription then runs on this device. |
 | Safari | ❌ Not supported | Safari does not implement Web Speech API on macOS in a compatible way. |
 
 ### Mobile
@@ -171,13 +176,13 @@ This API is only available in a narrow set of browsers, which determines what wo
 |--------------------|--------|-------|
 | Chrome on Android | ⚠️ Limited | Most likely to work. Requires an active internet connection (speech is sent to Google's servers). Grant microphone permission when prompted. |
 | Edge on Android | ⚠️ Limited | Reports the API as available but may fail silently. Not recommended. |
-| Firefox on Android | ❌ Not supported | No Web Speech API support. |
+| Firefox on Android | ⚠️ Local Whisper only | No browser speech service. The local model may run, but CPU/memory and speed vary by device. |
 | Samsung Internet | ❌ Not supported | No Web Speech API support. |
 | Kiwi Browser (Android) | ⚠️ Experimental | Chromium-based; may work, but not tested. |
 | Safari on iOS | ⚠️ Very limited | `webkitSpeechRecognition` is present but behaves inconsistently. Short sessions only. Requires internet. |
 | Chrome / Edge / Firefox on iOS | ⚠️ Very limited | All iOS browsers are required by Apple to use Safari's WebKit engine, so they share Safari's limitations. |
 
-> **Summary:** On Android, try **Google Chrome** (the standard version, not Samsung Internet or Firefox).
+> **Summary:** On Android, try **Google Chrome** for service speech, or Firefox/Chrome with the local Whisper model for on-device captioning.
 > On iOS, there is no reliably supported browser at this time; a desktop or laptop computer running Chrome or Edge is strongly recommended.
 
 ### Why Chrome and Edge on Android often fail

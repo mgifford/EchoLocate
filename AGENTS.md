@@ -13,6 +13,7 @@ Primary runtime pieces:
 ## Current Product Behavior
 - Real-time transcription uses Web Speech API (Chrome/Edge family support)
 - Speech engine is selectable: browser speech service (default), Chrome's experimental on-device recognizer, or local Whisper (WASM) once its pinned model is installed; local Whisper runs ~5s chunks and is English-only in this build
+- Browsers without a usable browser speech service (notably Firefox) default to local Whisper, disable the unavailable service engines, show the model-setup panel and open install consent from Start; do not silently fall back to a broken service
 - Simulated speaker grouping uses pitch centroid heuristics (not true diarization)
 - Dynamic speaker lanes are created on demand and do not auto-hide
 - Maximum speaker profiles is capped at 6
