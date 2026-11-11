@@ -31,10 +31,14 @@ Speech recognition path:
 
 Engine selection:
 
-1. **Browser speech service** — the default Web Speech API path.
+1. **Browser speech service** — the Web Speech API. This is an explicit,
+   labelled cloud choice on first run, not the local-first default.
 2. **On-device (experimental)** — Chrome's `processLocally` recognizer, gated by
    `SpeechRecognition.available()` and installed with `SpeechRecognition.install()`.
    The browser downloads the language pack; EchoLocate does not fetch weights.
+3. **Local Whisper (WASM)** — recommended default when available. Runs the
+   pinned `whisper-tiny.en` model in a worker from ModelManager Cache Storage,
+   in five-second chunks, with a bounded audio queue and coverage reporting.
 
 Reliability behavior:
 
