@@ -33,7 +33,8 @@ Related material:
   backpressure, worker-failure/stop abandonment, a coverage warning and
   `labs/audio-queue.html`. Plus the Phase 0 implementation assessment and the
   README licence correction (AGPL-3.0). See
-  [IMPLEMENTATION_ASSESSMENT.md](IMPLEMENTATION_ASSESSMENT.md).
+  [IMPLEMENTATION_ASSESSMENT.md](IMPLEMENTATION_ASSESSMENT.md) and
+  <https://github.com/mgifford/EchoLocate/pull/75>.
 - **Caption event seam** (PR #73): a pure `modules/caption-events.js` contract
   with stable IDs, sequence, revisions, speaker metadata and WebVTT from
   events; the app emits events alongside cards and `labs/events.html`
