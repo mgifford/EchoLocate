@@ -12,7 +12,7 @@ Primary runtime pieces:
 
 ## Current Product Behavior
 - Real-time transcription uses Web Speech API (Chrome/Edge family support)
-- Speech engine is selectable: browser speech service (default) or Chrome's experimental on-device recognizer; the on-device language pack is browser-managed and only installed on user action
+- Speech engine is selectable: browser speech service (default), Chrome's experimental on-device recognizer, or local Whisper (WASM) once its pinned model is installed; local Whisper runs ~5s chunks and is English-only in this build
 - Simulated speaker grouping uses pitch centroid heuristics (not true diarization)
 - Dynamic speaker lanes are created on demand and do not auto-hide
 - Maximum speaker profiles is capped at 6
@@ -20,8 +20,8 @@ Primary runtime pieces:
 - Session cards persist in localStorage and can be exported as VTT; write failures and the 500-card trim are surfaced in the footer
 - Privacy notice separates local storage from browser speech services (Chrome/Edge may send audio to vendor servers)
 - Capability probing (Web Speech, on-device status, WebGPU adapter, WASM, storage) is local-only and shown in Debug
-- Model installs require exact-revision consent and SHA-256 verification; `models/manifest.json` is empty until an engine ships
-- A meta CSP allows scripts only from self plus the hashed import map; no eval or arbitrary inline scripts. Add model hosts to `connect-src` before download support ships
+- Model installs require exact-revision consent and SHA-256 verification; `models/manifest.json` pins `whisper-tiny-en` for the WASM engine
+- A meta CSP allows scripts only from self plus the hashed import map; no eval or arbitrary inline scripts. `connect-src` allows the pinned Hugging Face model host and its redirects
 - Translation asks for per-language-pair consent before Chrome downloads its model; refusing leaves captions and the rest of the app working
 - Light/dark theme toggle is persisted in localStorage
 
@@ -49,6 +49,7 @@ Before committing, verify:
 6. Both engines show an accurate status; choosing an unavailable engine must not disable Start
 7. Light and dark themes both remain readable
 8. Storage failures and the 500-card trim are visible and announced
+9. Local Whisper: install consent, SHA-256 verification, transcription and model removal still work; no audio leaves the browser
 
 ## Local Development
 

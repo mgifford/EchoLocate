@@ -12,8 +12,8 @@ Chosen experiment mode: `webgpu-local` + `advanced`. Do not make it the default 
 |---|---|
 | `browser-service` | Implemented and default. Chrome/Edge may use a vendor cloud service, disclosed in the privacy notice. |
 | `browser-local` | Implemented experimentally in PR #57. Uses `processLocally = true`, `available({ langs, quality: 'conversation', processLocally: true })` and a user-pressed `install()`. The browser owns and downloads the language pack; EchoLocate never fetches weights. The engine choice is persisted independently of language. A reported Chrome 155 Windows no-result regression needs a runtime fallback. |
-| `webgpu-local` | Not implemented. |
-| `wasm-local` | Not implemented. |
+| `webgpu-local` | Not implemented. Chrome on the development Mac does not expose WebGPU (`navigator.gpu === false`), so it cannot be verified there. |
+| `wasm-local` | Implemented experimentally: `Xenova/whisper-tiny.en` (Apache-2.0) via Transformers.js/ONNX WASM in a worker, from the hash-verified model cache. English-only, ~5 s chunks. |
 | Speaker `basic` | Implemented (Meyda + pitch). |
 | Speaker `off` / `advanced` | Not implemented; `advanced` is the diarization work. |
 

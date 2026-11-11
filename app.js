@@ -287,6 +287,12 @@ const SPEECH_ENGINES = Object.freeze({
     requiresNetwork: false,
     local: true,
   },
+  'wasm-local': {
+    label: 'Local Whisper (WASM) — experimental',
+    description: 'Runs Whisper tiny on this device with WASM. Install the model in Local models first. English only.',
+    requiresNetwork: false,
+    local: true,
+  },
 });
 
 function normalizeSpeechEngine(value) {
@@ -339,23 +345,32 @@ const SPEECH_ADAPTERS = Object.freeze({
     id: 'browser-local',
     create: () => makeSpeechAdapter('browser-local'),
   },
+  'wasm-local': {
+    id: 'wasm-local',
+    create: () => makeSpeechAdapter('wasm-local'),
+  },
 });
 
 const speechAdapterCache = new Map();
 
 function makeSpeechAdapter(engine) {
   const id = normalizeSpeechEngine(engine);
+  const implementation = id === 'wasm-local' ? LocalWhisper : SpeechEngine;
   return {
     engine: id,
     requiresNetwork: engineRequiresNetwork(id),
-    isAvailable: () => !!getSpeechRecognitionCtor(),
-    init: () => SpeechEngine.init(),
-    start: () => SpeechEngine.start(),
-    stop: () => SpeechEngine.stop(),
+    isAvailable: () => (
+      id === 'wasm-local' ? LocalWhisper.isAvailable() : !!getSpeechRecognitionCtor()
+    ),
+    init: () => implementation.init(),
+    start: () => implementation.start(),
+    stop: () => implementation.stop(),
     setLanguage: (lang) => {
-      if (SpeechEngine._rec) SpeechEngine._rec.lang = lang || '';
+      if (id !== 'wasm-local' && SpeechEngine._rec) SpeechEngine._rec.lang = lang || '';
     },
-    dispose: () => SpeechEngine.stop(),
+    dispose: () => (
+      typeof implementation.dispose === 'function' ? implementation.dispose() : implementation.stop()
+    ),
   };
 }
 
@@ -456,7 +471,11 @@ async function detectCapabilities({
           : (onDevice === 'unavailable' ? 'No language pack for this language' : null),
       },
       'webgpu-local': { available: false, planned: true, reason: 'Not implemented in this build' },
-      'wasm-local': { available: false, planned: true, reason: 'Not implemented in this build' },
+      'wasm-local': {
+        available: wasm.supported,
+        requiresModel: true,
+        reason: wasm.supported ? 'Requires the Whisper model from Local models' : 'WASM unavailable',
+      },
     },
     compatibility: {
       captionsOnly: !usesMicAnalysisGraph(),
@@ -2399,20 +2418,28 @@ async function installOnDeviceLanguagePack(lang) {
 
 let engineStatusToken = 0;
 
-function setEngineStatus(status) {
+function setEngineStatusText(text, tone, showInstall = false) {
   const el = document.getElementById('engine-status');
   const installBtn = document.getElementById('btn-install-langpack');
   if (!el) return;
-  if (!status) {
+  if (!text) {
     el.textContent = '';
     el.className = 'translation-status hidden';
     if (installBtn) installBtn.hidden = true;
     return;
   }
-  const { text, tone } = onDeviceStatusText(status);
   el.textContent = text;
   el.className = `translation-status translation-status--${tone}`;
-  if (installBtn) installBtn.hidden = status !== 'downloadable';
+  if (installBtn) installBtn.hidden = !showInstall;
+}
+
+function setEngineStatus(status) {
+  if (!status) {
+    setEngineStatusText('', 'checking');
+    return;
+  }
+  const { text, tone } = onDeviceStatusText(status);
+  setEngineStatusText(text, tone, status === 'downloadable');
 }
 
 async function updateEngineStatus() {
@@ -2420,6 +2447,27 @@ async function updateEngineStatus() {
   // changes while a previous check is still in flight.
   const token = ++engineStatusToken;
   if (!document.getElementById('engine-status')) return;
+
+  if (State.recognitionEngine === 'wasm-local') {
+    if (!detectWasmFeatures().supported) {
+      setEngineStatus('unsupported');
+      return;
+    }
+    if (!ModelManager._manifest) {
+      setEngineStatusText('Open Options to load local models', 'checking');
+      return;
+    }
+    const model = ModelManager.get(WHISPER_MODEL_ID);
+    if (!model) {
+      setEngineStatusText('Local Whisper model unavailable', 'unavailable');
+    } else if (!ModelManager.isInstalled(model)) {
+      setEngineStatusText('Install Whisper tiny in Local models', 'checking');
+    } else {
+      setEngineStatusText('Local Whisper model ready', 'available');
+    }
+    return;
+  }
+
   if (State.recognitionEngine !== 'browser-local') {
     setEngineStatus(null);
     return;
@@ -2446,6 +2494,10 @@ async function initEngineControl() {
     if (id === 'browser-local' && !supportsOnDeviceSpeech()) {
       option.disabled = true;
       option.textContent += ' — not supported here';
+    }
+    if (id === 'wasm-local' && !detectWasmFeatures().supported) {
+      option.disabled = true;
+      option.textContent += ' — WASM unavailable';
     }
     select.appendChild(option);
   }
@@ -2608,6 +2660,7 @@ async function installLocalModel(model) {
   }
 
   renderModelList(ModelManager.models(), message);
+  updateEngineStatus();
 }
 
 async function removeLocalModel(model) {
@@ -2616,6 +2669,7 @@ async function removeLocalModel(model) {
   try {
     await ModelManager.remove(model);
     renderModelList(ModelManager.models(), 'Model removed. Transcripts were not changed.');
+    updateEngineStatus();
   } catch (err) {
     if (status) status.textContent = `Could not remove model: ${err.message}`;
   }
@@ -2664,6 +2718,7 @@ async function initModelControls() {
     return;
   }
   renderModelList(ModelManager.models());
+  updateEngineStatus();
 }
 
 function applyView(view) {
@@ -4555,6 +4610,302 @@ const SpeechEngine = {
     } catch {
       // Ignore stop race.
     }
+  },
+};
+
+// ── Local Whisper (WASM) ─────────────────────────────────────────────────────
+const WHISPER_MODEL_ID = 'whisper-tiny-en';
+const WHISPER_SAMPLE_RATE = 16000;
+const WHISPER_CHUNK_SAMPLES = WHISPER_SAMPLE_RATE * 5; // 5 s per caption chunk
+
+/** Linear resampler used by the local Whisper capture path (pure/testable). */
+function resampleTo16k(samples, inputRate) {
+  if (!samples || !samples.length) return new Float32Array(0);
+  if (inputRate === WHISPER_SAMPLE_RATE) return samples;
+  const ratio = inputRate / WHISPER_SAMPLE_RATE;
+  const length = Math.max(0, Math.floor(samples.length / ratio));
+  const output = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const position = i * ratio;
+    const index = Math.floor(position);
+    const fraction = position - index;
+    const a = samples[index] || 0;
+    const b = samples[index + 1] === undefined ? a : samples[index + 1];
+    output[i] = a + (b - a) * fraction;
+  }
+  return output;
+}
+
+const LocalWhisper = {
+  worker: null,
+  workerReady: false,
+  readyPromise: null,
+  readyResolve: null,
+  readyReject: null,
+  loadMs: 0,
+  pending: new Map(),
+  nextId: 1,
+  node: null,
+  samples: [],
+  sampleLength: 0,
+  chunkStart: 0,
+  busy: false,
+  queued: null,
+
+  isAvailable() {
+    const model = ModelManager.get(WHISPER_MODEL_ID);
+    return detectWasmFeatures().supported && !!model && ModelManager.isInstalled(model);
+  },
+
+  init() {
+    // The worker and model are loaded lazily on Start.
+  },
+
+  ensureWorker() {
+    if (this.workerReady) return Promise.resolve();
+    if (this.readyPromise) return this.readyPromise;
+
+    const model = ModelManager.get(WHISPER_MODEL_ID);
+    if (!model) return Promise.reject(new Error('Whisper model is not in the manifest'));
+
+    if (!this.worker) {
+      this.worker = new Worker('./whisper-worker.js', { type: 'module' });
+      this.worker.addEventListener('message', (event) => this._onMessage(event.data || {}));
+      this.worker.addEventListener('error', (event) => {
+        this.workerReady = false;
+        this._fail(new Error(event.message || 'Whisper worker failed'));
+      });
+    }
+
+    this.readyPromise = new Promise((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+      this.worker.postMessage({
+        type: 'init',
+        model: model.transformersModel,
+        revision: model.revision,
+      });
+    }).then(() => {
+      this.workerReady = true;
+    }).finally(() => {
+      this.readyPromise = null;
+    });
+
+    return this.readyPromise;
+  },
+
+  _onMessage(data) {
+    if (data.type === 'ready') {
+      this.loadMs = data.loadMs || 0;
+      if (this.readyResolve) {
+        const resolve = this.readyResolve;
+        this.readyResolve = null;
+        this.readyReject = null;
+        resolve();
+      }
+      return;
+    }
+    if (data.type === 'progress') {
+      const progress = data.progress || {};
+      const pct = progress.total ? Math.round((progress.loaded / progress.total) * 100) : null;
+      if (State.isRunning) {
+        setStatus('active', `Loading local Whisper model…${pct !== null ? ` ${pct}%` : ''}`);
+      }
+      return;
+    }
+    if (data.type === 'result') {
+      const pending = this.pending.get(data.id);
+      if (pending) {
+        this.pending.delete(data.id);
+        pending.resolve(data);
+      }
+      return;
+    }
+    if (data.type === 'error') {
+      const error = new Error(data.message || 'Whisper error');
+      if (data.id && this.pending.has(data.id)) {
+        const pending = this.pending.get(data.id);
+        this.pending.delete(data.id);
+        pending.reject(error);
+      } else if (this.readyReject) {
+        const reject = this.readyReject;
+        this.readyResolve = null;
+        this.readyReject = null;
+        reject(error);
+      } else {
+        console.warn('[EchoLocate] Whisper:', error.message);
+      }
+    }
+  },
+
+  _fail(error) {
+    if (this.readyReject) {
+      const reject = this.readyReject;
+      this.readyResolve = null;
+      this.readyReject = null;
+      reject(error);
+    }
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+    if (State.isRunning) setStatus('error', `Local Whisper: ${error.message}`);
+  },
+
+  async transcribe(samples, startMs) {
+    await this.ensureWorker();
+    if (this.busy) {
+      this.queued = { samples, startMs };
+      return;
+    }
+    this.busy = true;
+    try {
+      const id = this.nextId++;
+      const result = await new Promise((resolve, reject) => {
+        this.pending.set(id, { resolve, reject });
+        this.worker.postMessage({ type: 'transcribe', id, audio: samples }, [samples.buffer]);
+      });
+      const text = String(result.text || '').trim();
+      if (text && State.isRunning) {
+        State.currentUtteranceStartedAt = startMs;
+        TranscriptCtrl.commitCard(text, 0.8);
+        setStatus('active', `Listening (local Whisper, ${result.ms} ms)`);
+      }
+    } catch (err) {
+      if (State.isRunning) setStatus('error', `Local Whisper: ${err.message}`);
+    } finally {
+      this.busy = false;
+      if (this.queued) {
+        const next = this.queued;
+        this.queued = null;
+        this.transcribe(next.samples, next.startMs);
+      }
+    }
+  },
+
+  _consume(block) {
+    if (!State.isRunning || !State.audioCtx) return;
+    const samples = resampleTo16k(block, State.audioCtx.sampleRate);
+    if (!samples.length) return;
+
+    if (!this.chunkStart) {
+      this.chunkStart = Date.now() - Math.round((this.sampleLength / WHISPER_SAMPLE_RATE) * 1000);
+    }
+    this.samples.push(samples);
+    this.sampleLength += samples.length;
+
+    while (this.sampleLength >= WHISPER_CHUNK_SAMPLES) {
+      const all = new Float32Array(this.sampleLength);
+      let offset = 0;
+      for (const part of this.samples) {
+        all.set(part, offset);
+        offset += part.length;
+      }
+      const chunk = all.slice(0, WHISPER_CHUNK_SAMPLES);
+      const rest = all.slice(WHISPER_CHUNK_SAMPLES);
+      this.samples = rest.length ? [rest] : [];
+      this.sampleLength = rest.length;
+
+      const start = this.chunkStart;
+      this.chunkStart = Date.now() - Math.round((rest.length / WHISPER_SAMPLE_RATE) * 1000);
+      this.transcribe(chunk, start);
+    }
+  },
+
+  async start() {
+    if (State.isRunning) return;
+    if (!detectWasmFeatures().supported) {
+      setStatus('error', 'WASM is not supported in this browser');
+      return;
+    }
+    const model = ModelManager.get(WHISPER_MODEL_ID);
+    if (!model || !ModelManager.isInstalled(model)) {
+      setStatus('error', 'Install the local Whisper model in Options first');
+      return;
+    }
+
+    State.isRunning = true;
+    State.captionsOnly = false;
+    setStatus('active', 'Starting local Whisper…');
+
+    try {
+      await setupAudio();
+    } catch {
+      State.isRunning = false;
+      setStatus('error', 'Mic access denied');
+      syncTransportState();
+      updateEmptyStage();
+      return;
+    }
+    if (!State.isRunning) {
+      syncTransportState();
+      return;
+    }
+    if (!State.audioCtx || !State.mediaSource) {
+      this.stop();
+      setStatus('error', 'Local Whisper could not access the microphone graph');
+      return;
+    }
+
+    try {
+      setStatus('active', 'Loading local Whisper model…');
+      await this.ensureWorker();
+      if (!State.isRunning) {
+        syncTransportState();
+        return;
+      }
+      await State.audioCtx.audioWorklet.addModule('./capture-worklet.js');
+      if (!State.isRunning) {
+        syncTransportState();
+        return;
+      }
+      this.node = new AudioWorkletNode(State.audioCtx, 'echolocate-capture');
+      this.node.port.onmessage = (event) => this._consume(event.data);
+      State.mediaSource.connect(this.node);
+    } catch (err) {
+      this.stop();
+      setStatus('error', `Local Whisper failed: ${err.message}`);
+      return;
+    }
+
+    State.profilingStartedAt = Date.now();
+    startPitchSampling();
+    startLanguageHintTimer();
+    setStatus('active', 'Listening (local Whisper)');
+    syncTransportState();
+    updateEmptyStage();
+  },
+
+  stop() {
+    State.isRunning = false;
+    if (this.node) {
+      try {
+        this.node.port.onmessage = null;
+        this.node.disconnect();
+      } catch {
+        // Ignore disconnect races.
+      }
+      this.node = null;
+    }
+    this.samples = [];
+    this.sampleLength = 0;
+    this.chunkStart = 0;
+    this.queued = null;
+    stopPitchSampling();
+    stopLanguageHintTimer();
+    showLanguageHint('');
+    TranscriptCtrl.clearInterim();
+    setStatus('idle', 'Ready');
+    syncTransportState();
+    updateEmptyStage();
+  },
+
+  dispose() {
+    this.stop();
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.workerReady = false;
+    this.pending.clear();
   },
 };
 

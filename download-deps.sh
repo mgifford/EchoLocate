@@ -14,6 +14,7 @@ set -euo pipefail
 HTMX_VERSION="2.0.4"
 MEYDA_VERSION="5.6.3"
 FRANC_VERSION="6.2.0"
+TRANSFORMERS_VERSION="2.17.2"
 # franc-min imports these by bare specifier.  index.html maps them to the
 # vendored copies below; keep versions and the import map in sync.
 TRIGRAM_UTILS_VERSION="2.0.1"
@@ -31,6 +32,18 @@ echo "Downloading Meyda ${MEYDA_VERSION}..."
 curl -fsSL \
   "https://unpkg.com/meyda@${MEYDA_VERSION}/dist/web/meyda.min.js" \
   -o vendor/meyda.min.js
+
+echo "Downloading Transformers.js ${TRANSFORMERS_VERSION} (local Whisper runtime)..."
+mkdir -p vendor/transformers
+curl -fsSL \
+  "https://cdn.jsdelivr.net/npm/@xenova/transformers@${TRANSFORMERS_VERSION}/dist/transformers.min.js" \
+  -o vendor/transformers/transformers.min.js
+curl -fsSL \
+  "https://cdn.jsdelivr.net/npm/@xenova/transformers@${TRANSFORMERS_VERSION}/dist/ort-wasm-simd.wasm" \
+  -o vendor/transformers/ort-wasm-simd.wasm
+curl -fsSL \
+  "https://cdn.jsdelivr.net/npm/@xenova/transformers@${TRANSFORMERS_VERSION}/LICENSE" \
+  -o vendor/transformers/LICENSE
 
 echo "Downloading franc-min ${FRANC_VERSION} (language detection)..."
 curl -fsSL \
@@ -60,7 +73,7 @@ done
 
 echo ""
 echo "Done. vendor/ contents:"
-du -sh vendor/htmx.min.js vendor/meyda.min.js vendor/franc-min/ \
+du -sh vendor/htmx.min.js vendor/meyda.min.js vendor/transformers/ vendor/franc-min/ \
   vendor/trigram-utils/ vendor/n-gram/ vendor/collapse-white-space/
 echo ""
 echo "Now start the app with:  python3 server.py"

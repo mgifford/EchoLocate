@@ -32,6 +32,10 @@
 
 **Chrome 155 Windows on-device no-result issue:** https://issues.chromium.org/issues/579050368
 
+**Whisper tiny.en ONNX (Apache-2.0):** https://huggingface.co/Xenova/whisper-tiny.en
+
+**Transformers.js:** https://github.com/xenova/transformers.js
+
 **Whisper base ONNX (Apache-2.0):** https://huggingface.co/onnx-community/whisper-base
 
 **Whisper tiny ONNX:** https://huggingface.co/onnx-community/whisper-tiny

@@ -1453,10 +1453,10 @@ describe('normalizeSpeechEngine', () => {
   it('accepts the supported engines', () => {
     assert.equal(fn('browser-service'), 'browser-service');
     assert.equal(fn('browser-local'), 'browser-local');
+    assert.equal(fn('wasm-local'), 'wasm-local');
   });
 
   it('falls back to browser-service for unknown, empty and nullish values', () => {
-    assert.equal(fn('wasm-local'), 'browser-service');
     assert.equal(fn(''), 'browser-service');
     assert.equal(fn(null), 'browser-service');
     assert.equal(fn(undefined), 'browser-service');
@@ -1707,6 +1707,27 @@ describe('caption commit queue', () => {
 
 // ── SpeechAdapter contract ────────────────────────────────────────────────────
 
+describe('resampleTo16k', () => {
+  const fn = ctx.resampleTo16k;
+
+  it('returns the input unchanged at 16 kHz', () => {
+    const input = new Float32Array([0, 0.5, -0.5]);
+    assert.equal(fn(input, 16000), input);
+  });
+
+  it('downsamples 32 kHz by a factor of two', () => {
+    const output = fn(new Float32Array([0, 1, 2, 3]), 32000);
+    assert.equal(output.length, 2);
+    assert.equal(output[0], 0);
+    assert.equal(output[1], 2);
+  });
+
+  it('handles empty input', () => {
+    assert.equal(fn(new Float32Array(0), 48000).length, 0);
+    assert.equal(fn(null, 48000).length, 0);
+  });
+});
+
 describe('SpeechAdapter contract', () => {
   it('exposes the same interface for both engines', () => {
     const c = loadApp();
@@ -1828,7 +1849,8 @@ describe('capability detection', () => {
     assert.equal(snapshot.engines['browser-local'].available, false);
     assert.equal(snapshot.engines['webgpu-local'].available, false);
     assert.equal(snapshot.engines['webgpu-local'].planned, true);
-    assert.equal(snapshot.engines['wasm-local'].planned, true);
+    assert.equal(snapshot.engines['wasm-local'].available, true);
+    assert.equal(snapshot.engines['wasm-local'].requiresModel, true);
   });
 
   it('maps on-device availability to the browser-local engine', async () => {

@@ -17,9 +17,10 @@
 
 - `browser-local` is in scope and shipped experimentally; start simple and
   extend only with evidence. `webgpu-local`/`wasm-local` remain planned.
-- The WebGPU experiment starts with `onnx-community/whisper-base` (Apache-2.0,
-  fp16 ~146 MB, int8 ~77 MB); `whisper-tiny` (~76 MB fp16) is the constrained
-  fallback. Parakeet is deferred until Whisper proves insufficient.
+- Local ASR starts with WASM Whisper (`Xenova/whisper-tiny.en`, Apache-2.0,
+  ~43 MB) because the development Mac does not expose WebGPU. The same worker
+  can switch to WebGPU later; `onnx-community/whisper-base` remains the
+  WebGPU experiment. Parakeet is deferred until Whisper proves insufficient.
 - One **Unknown** lane for now. Label "Unknown", card note "unattributed", VTT
   `<v Unknown>`. Multiple unattributed lanes need unknown-vs-unknown clustering
   and must not imply distinctions that were not measured.

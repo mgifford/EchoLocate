@@ -44,6 +44,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
+- **Local Whisper (WASM)** (PR #66): pinned `whisper-tiny-en` model, consent +
+  SHA-256 install, WASM worker, 5-second caption chunks, engine selector and
+  model removal. English-only. See
+  <https://github.com/mgifford/EchoLocate/pull/66>.
 - **Translation model consent** (PR #64): per-pair consent before Chrome
   downloads a translation model, with a disclosure dialog and no captions
   blocked when consent is refused. See
@@ -160,8 +164,8 @@ history, and no reference points at a file that does not exist.
 
 ### N5. First installable model and consent inventory
 
-- [ ] Add the whisper-base manifest entry with the WebGPU engine (PR 3), with
-      pinned revision, exact sizes and SHA-256.
+- [x] Add the first local model entry: `whisper-tiny-en` for the WASM engine,
+      with a pinned revision, exact sizes and SHA-256 (PR #65).
 - [x] Put the existing Chrome Translator download into the consent inventory:
       per source:target consent, dialog before `Translator.create`, and refusal
       that leaves captions working.
@@ -169,7 +173,9 @@ history, and no reference points at a file that does not exist.
 
 ## Later (parked — do not start yet)
 
-- [ ] **WebGPU ASR experiment.** Start with `onnx-community/whisper-base`
+- [ ] **WebGPU ASR experiment.** Blocked on a machine where Chrome exposes
+      WebGPU (this Mac reports `navigator.gpu === false`). Start with
+      `onnx-community/whisper-base`
       (Apache-2.0, ~146 MB fp16) and `whisper-tiny` (~76 MB) as the constrained
       fallback. Chunking, partials, timestamps; measure WER, caption p50/p95,
       load time, peak memory; handle GPU device loss. Compare against
