@@ -110,7 +110,7 @@ name.
 
 | Technology | Status | Notes |
 |---|---|---|
-| Node contract tests | Shipped | 393 tests at this snapshot, including caption events, provider metadata and the audio queue. |
+| Node contract tests | Shipped | 394 tests at this snapshot, including caption events, provider metadata and the audio queue. |
 | CI syntax/contract workflow | Shipped | Runs on PRs and `main`. |
 | `labs/` standalone demos | Started | `events.html`, `providers.html` and `audio-queue.html` are live; the remaining pages are planned. See [labs/README.md](labs/README.md). |
 | Browser/CDP manual runs | Ad hoc | Used for CSP, model install, worker and synthetic-audio checks. |
