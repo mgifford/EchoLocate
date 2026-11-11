@@ -5171,6 +5171,20 @@ const LocalWhisper = {
       return;
     }
 
+    // SpeechEngine starts Meyda from rec.onstart. Local Whisper bypasses
+    // SpeechRecognition, so without this the analyzer never starts, no
+    // signature frames reach the profile matcher, and every utterance after
+    // the first is attributed to Unknown.
+    if (State.meydaAnalyzer && typeof State.meydaAnalyzer.start === 'function') {
+      try {
+        State.meydaAnalyzer.start();
+      } catch (err) {
+        console.warn('[EchoLocate] Meyda start failed for local Whisper:', err.message);
+      }
+    } else {
+      console.warn('[EchoLocate] Meyda analyzer unavailable for local Whisper');
+    }
+
     State.profilingStartedAt = Date.now();
     startPitchSampling();
     startLanguageHintTimer();

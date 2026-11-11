@@ -285,6 +285,11 @@ Ordered by what most improves a **sovereign panel discussion** first.
     about the default and the disclosure, not a new model.
     Shipped in PR #74.
 
+- [x] **Local Whisper speaker analysis.**
+  Start the Meyda analyzer on the local path so chunks produce voice
+  signatures; the previous local path never started it. This is still heuristic
+  grouping, not diarization.
+
 - [x] **Lossless audio queue.**
   Bounded FIFO with stable chunks, drop-oldest backpressure, processed/pending/
   missing coverage and a visible warning. Shipped in PR #75.

@@ -120,6 +120,20 @@ the working record; update it when a phase changes.
   capture, capacity, rejected/overlapping chunks, gaps, failure, stop,
   restart and interval union.
 
+## Follow-up fix: local Whisper speaker analysis
+
+Root cause of the reported “Unknown voice” results: `initMeyda()` creates the
+Meyda analyzer, but only `SpeechEngine.onstart` called `meydaAnalyzer.start()`.
+Local Whisper bypasses `SpeechRecognition`, so its analyzer never ran; no
+signature frames reached `flushUtteranceMetrics()`, the first profile was
+created without a signature, and later chunks fell through the “no usable
+signature → Unknown” branch.
+
+Fix: start the Meyda analyzer in `LocalWhisper.start()` after `setupAudio()` and
+before pitch sampling. Add a VM regression test that asserts the analyzer is
+started for the local path. This does not turn Meyda into diarization; it makes
+the existing heuristic use its intended input.
+
 ## Phase 1 baseline / acceptance
 
 - Baseline: `npm test` = 376 tests, 0 failures; `node --check` clean.
