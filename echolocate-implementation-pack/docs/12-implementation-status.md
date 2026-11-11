@@ -26,7 +26,7 @@ Snapshot: 2026-11-10. Update this file when a roadmap phase changes.
 - **#62** — model manifest, consent manager and consent UI.
 - **CSP** — meta policy, external theme bootstrap, hashed import map and tests.
 - **Translation consent** — per-pair consent before Chrome's model download (PR #64).
-- **Local Whisper (WASM)** — pinned whisper-tiny.en, model consent, worker and engine.
+- **Local Whisper (WASM)** — pinned whisper-tiny.en, model consent, worker and engine (PR #66).
 
 ## Current constraints that affect the plan
 

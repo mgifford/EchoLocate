@@ -40,9 +40,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
-- **Local Whisper (WASM)** (this PR): pinned `whisper-tiny-en` model, consent +
+- **Local Whisper (WASM)** (PR #66): pinned `whisper-tiny-en` model, consent +
   SHA-256 install, WASM worker, 5-second caption chunks, engine selector and
-  model removal. English-only.
+  model removal. English-only. See
+  <https://github.com/mgifford/EchoLocate/pull/66>.
 - **Translation model consent** (PR #64): per-pair consent before Chrome
   downloads a translation model, with a disclosure dialog and no captions
   blocked when consent is refused. See
