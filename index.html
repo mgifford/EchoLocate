@@ -72,6 +72,8 @@
     <strong>Use online speech recognition</strong> to be enabled in Edge settings.
   </div>
 
+  <div id="local-audio-warning" class="hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <!-- Speech help modal — shown on Edge page-load check and after speech errors -->
   <dialog id="speech-help-modal" aria-labelledby="speech-modal-title">
     <div class="speech-modal-content">
@@ -405,6 +407,7 @@
   </footer>
 
   <script src="modules/caption-events.js?v=1"></script>
-  <script src="app.js?v=20261111-4"></script>
+  <script src="modules/audio-chunk-queue.js?v=1"></script>
+  <script src="app.js?v=20261111-5"></script>
 </body>
 </html>

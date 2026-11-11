@@ -117,6 +117,7 @@ name.
 ## Known limits and debt
 
 - `app.js` is still a large classic script; module seams are the next step.
+- The audio queue now reports loss, but the shared audio timeline (Phase 2) is still missing.
 - Local Whisper is 5 s chunks, English-only, and has no partials/timestamps.
 - Meyda is heuristic speaker grouping, not diarization.
 - Live microphone capture still needs a normal-browser/device matrix.
