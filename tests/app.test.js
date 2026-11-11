@@ -16,6 +16,7 @@ const assert = require('node:assert');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
+const { AudioChunkQueue } = require('../modules/audio-chunk-queue.js');
 
 // ── Minimal browser-globals mock ─────────────────────────────────────────────
 
@@ -1765,6 +1766,44 @@ describe('teardownAudio', () => {
     assert.equal(result.context, null);
     assert.equal(result.source, null);
     assert.equal(result.analyser, null);
+  });
+});
+
+describe('LocalWhisper local analysis', () => {
+  it('starts Meyda so local chunks can become speaker profiles', async () => {
+    const c = loadApp();
+    c.AudioChunkQueue = AudioChunkQueue;
+    c.WebAssembly = WebAssembly;
+    vm.runInContext(`
+      window.__meydaStarted = 0;
+      State.meydaAnalyzer = { start: () => { window.__meydaStarted += 1; } };
+      State.audioCtx = {
+        sampleRate: 16000,
+        audioWorklet: { addModule: async () => {} },
+      };
+      State.mediaSource = { connect: () => {} };
+      globalThis.AudioWorkletNode = class {
+        constructor() { this.port = { onmessage: null }; }
+        disconnect() {}
+      };
+      ModelManager.get = () => ({ id: 'whisper-tiny-en', transformersModel: 'X', revision: 'r' });
+      ModelManager.isInstalled = () => true;
+      LocalWhisper.ensureWorker = async () => {};
+      setupAudio = async () => {};
+      startPitchSampling = () => {};
+      startLanguageHintTimer = () => {};
+      setStatus = () => {};
+      syncTransportState = () => {};
+      updateEmptyStage = () => {};
+      openLocalModelSetup = async () => {};
+      teardownAudio = () => {};
+    `, c);
+
+    await vm.runInContext('LocalWhisper.start()', c);
+    assert.equal(vm.runInContext('window.__meydaStarted', c), 1);
+    assert.equal(vm.runInContext('State.isRunning', c), true);
+    assert.ok(vm.runInContext('LocalWhisper.queue instanceof AudioChunkQueue', c));
+    vm.runInContext('LocalWhisper.stop()', c);
   });
 });
 
