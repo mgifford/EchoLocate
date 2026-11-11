@@ -845,6 +845,7 @@ const State = {
   matchHistory:              [],
   nextSpeakerNum:            1,
   nextSegmentNum:            1,
+  captionEventStore:         null,
   storageHadError:           false,
   storageTruncationAnnounced: false,
   micDiagnostics:            null,
@@ -3740,6 +3741,36 @@ const TranscriptCtrl = {
     const segmentId = `seg-${State.nextSegmentNum}`;
     State.nextSegmentNum += 1;
 
+    // Emit the transport-neutral event alongside the existing card. The card
+    // remains the storage/render source for now; the event is the seam for
+    // revisions, audience views and translations.
+    let captionEvent = null;
+    if (typeof CaptionEvents !== 'undefined') {
+      try {
+        if (!State.captionEventStore) {
+          State.captionEventStore = new CaptionEvents.CaptionEventStore();
+        }
+        captionEvent = State.captionEventStore.finalize({
+          segmentId,
+          text,
+          language: detectedLang || laneLang || '',
+          startMs: startedAt,
+          endMs: now,
+          confidence,
+          speaker: {
+            id: profile.id,
+            label: profile.label,
+            color: profile.color,
+            status: profile.isUnknown
+              ? 'unknown'
+              : (match.confidenceLevel === 'high' ? 'established' : 'provisional'),
+          },
+        });
+      } catch (err) {
+        console.warn('[EchoLocate] Caption event failed:', err.message);
+      }
+    }
+
     const cardData = {
       segmentId,
       text,
@@ -3767,6 +3798,9 @@ const TranscriptCtrl = {
       translations: [],
       translatedText: '',
       translationLang: '',
+      captionEventId: captionEvent ? captionEvent.eventId : '',
+      captionSequence: captionEvent ? captionEvent.sequence : 0,
+      captionRevision: captionEvent ? captionEvent.revision : 0,
     };
 
     pushDebugPoint({
@@ -5629,6 +5663,7 @@ function initControls() {
     State.matchHistory = [];
     State.nextSpeakerNum = 1;
     State.nextSegmentNum = 1;
+    State.captionEventStore = null;
     State.speakerTranslationPrefs = {};
     persistSpeakerTranslationPrefs();
     State.debugPoints = [];

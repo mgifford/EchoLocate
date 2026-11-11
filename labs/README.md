@@ -1,8 +1,8 @@
 # Standalone demos
 
-Status: **planned**. These pages do not exist yet; this file fixes the contract
-so modules are built as demonstrable pieces rather than only as part of
-`app.js`.
+Status: **started**. `events.html` exists; the rest are planned. This file fixes
+the contract so modules are built as demonstrable pieces rather than only as
+part of `app.js`.
 
 Each lab is a small static page that loads only the module(s) it demonstrates.
 No microphone, model download or network access is required unless the page
@@ -16,7 +16,7 @@ says so in visible text.
 | `asr.html` | ASR adapters | audio → interim/final text; local/cloud labels | Mock transcript |
 | `vad.html` | VAD/turns | speech segments and boundaries | Synthetic envelope |
 | `diarization.html` | Diarization | speaker turns and confidence | Synthetic/short WAV |
-| `events.html` | Caption events | interim/final/revision → lanes, chat, VTT | Synthetic events |
+| `events.html` ✅ | Caption events | interim/final/revision → lanes, chat, VTT | Synthetic events |
 | `translation.html` | Translation adapters | text + pair → local/optional remote | Sample sentences |
 | `viewer.html` | Transcript views | accessible history, pause-scroll, preferences | Synthetic events |
 | `audience.html` | Audience view | two windows over `BroadcastChannel` | Synthetic events |
