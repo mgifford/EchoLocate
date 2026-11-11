@@ -44,10 +44,10 @@ Related material:
   adapter contract, and a local-only capability snapshot (Web Speech,
   on-device status, WebGPU adapter, WASM, storage) is available from Debug.
   See <https://github.com/mgifford/EchoLocate/pull/61>.
-- **Local-only browser defaults** (this PR): Firefox and browsers without Web
+- **Local-only browser defaults** (PR #71): Firefox and browsers without Web
   Speech default to local Whisper, disable the service engines, surface model
   setup in the empty state, and open consent from Start when the model is
-  missing.
+  missing. See <https://github.com/mgifford/EchoLocate/pull/71>.
 - **Local Whisper (WASM)** (PR #66): pinned `whisper-tiny-en` model, consent +
   SHA-256 install, WASM worker, 5-second caption chunks, engine selector and
   model removal. English-only. See
