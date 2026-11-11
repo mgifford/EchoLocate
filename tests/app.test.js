@@ -1707,6 +1707,42 @@ describe('caption commit queue', () => {
 
 // ── SpeechAdapter contract ────────────────────────────────────────────────────
 
+describe('teardownAudio', () => {
+  it('stops every microphone track and closes the audio graph on Stop', () => {
+    const c = loadApp();
+    const result = vm.runInContext(`(() => {
+      let stopped = 0;
+      let closed = 0;
+      let visualizerStops = 0;
+      let meydaStops = 0;
+      State.mediaStream = { getTracks: () => [{ stop: () => { stopped++; } }] };
+      State.audioCtx = { close: () => { closed++; } };
+      State.visualizer = { stop: () => { visualizerStops++; } };
+      State.meydaAnalyzer = { stop: () => { meydaStops++; } };
+      State.mediaSource = {};
+      State.analyser = {};
+      State.stereoAnalyserL = {};
+      State.stereoAnalyserR = {};
+      teardownAudio();
+      return {
+        stopped, closed, visualizerStops, meydaStops,
+        stream: State.mediaStream,
+        context: State.audioCtx,
+        source: State.mediaSource,
+        analyser: State.analyser,
+      };
+    })()`, c);
+    assert.equal(result.stopped, 1);
+    assert.equal(result.closed, 1);
+    assert.equal(result.visualizerStops, 1);
+    assert.equal(result.meydaStops, 1);
+    assert.equal(result.stream, null);
+    assert.equal(result.context, null);
+    assert.equal(result.source, null);
+    assert.equal(result.analyser, null);
+  });
+});
+
 describe('resampleTo16k', () => {
   const fn = ctx.resampleTo16k;
 
